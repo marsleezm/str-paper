@@ -1,0 +1,236 @@
+% This is "sig-alternate.tex" V2.1 April 2013
+% This file should be compiled with V2.5 of "sig-alternate.cls" May 2012
+%
+% This example file demonstrates the use of the 'sig-alternate.cls'
+% V2.5 LaTeX2e document class file. It is for those submitting
+% articles to ACM Conference Proceedings WHO DO NOT WISH TO
+% STRICTLY ADHERE TO THE SIGS (PUBS-BOARD-ENDORSED) STYLE.
+% The 'sig-alternate.cls' file will produce a similar-looking,
+% albeit, 'tighter' paper resulting in, invariably, fewer pages.
+%
+% ----------------------------------------------------------------------------------------------------------------
+% This .tex file (and associated .cls V2.5) produces:
+%       1) The Permission Statement
+%       2) The Conference (location) Info information
+%       3) The Copyright Line with ACM data
+%       4) NO page numbers
+%
+% as against the acm_proc_article-sp.cls file which
+% DOES NOT produce 1) thru' 3) above.
+%
+% Using 'sig-alternate.cls' you have control, however, from within
+% the source .tex file, over both the CopyrightYear
+% (defaulted to 200X) and the ACM Copyright Data
+% (defaulted to X-XXXXX-XX-X/XX/XX).
+% e.g.
+% \CopyrightYear{2007} will cause 2007 to appear in the copyright line.
+% \crdata{0-12345-67-8/90/12} will cause 0-12345-67-8/90/12 to appear in the copyright line.
+%
+% ---------------------------------------------------------------------------------------------------------------
+% This .tex source is an example which *does* use
+% the .bib file (from which the .bbl file % is produced).
+% REMEMBER HOWEVER: After having produced the .bbl file,
+% and prior to final submission, you *NEED* to 'insert'
+% your .bbl file into your source .tex file so as to provide
+% ONE 'self-contained' source file.
+%
+% ================= IF YOU HAVE QUESTIONS =======================
+% Questions regarding the SIGS styles, SIGS policies and
+% procedures, Conferences etc. should be sent to
+% Adrienne Griscti (griscti@acm.org)
+%
+% Technical questions _only_ to
+% Gerald Murray (murray@hq.acm.org)
+% ===============================================================
+%
+% For tracking purposes - this is V2.0 - May 2012
+
+\documentclass{sig-alternate-05-2015}
+
+%\usepackage{amsmath}
+\usepackage{courier}
+\usepackage{listings}
+\usepackage{amssymb}
+%\usepackage{amsthm}
+\usepackage{xcolor}
+\usepackage{subcaption}
+\usepackage{tabularx}
+\usepackage{diagbox}
+\usepackage{hyperref}
+\usepackage[english,ruled]{algorithm2e}
+\usepackage{multirow}
+\usepackage{float}
+\usepackage{color}
+
+
+
+\newcommand*{\ttfamilywithbold}{\fontfamily{lmtt}\selectfont}
+
+\definecolor{mygreen}{rgb}{0,0.6,0}
+\definecolor{mygray}{rgb}{0.5,0.5,0.5}
+\definecolor{mymauve}{rgb}{0.58,0,0.82}
+\lstset{ %
+  %emph={baz},
+  %emphstyle=\textbf
+  basicstyle=\scriptsize\ttfamily,        % the size of the fonts that are used for the code
+  captionpos=b,                    % sets the caption-position to bottom
+  commentstyle=\color{mygreen},    % comment style
+  escapeinside={\%*}{*)},          % if you want to add LaTeX within your code
+  showspaces=false,
+  showstringspaces=false,
+  framerule=1pt,
+  frame=bt,	                   % adds a frame around the code
+  keepspaces=true,                 % keeps spaces in text, useful for keeping indentation of code (possibly needs columns=flexible)
+  keywordstyle=\bfseries,,       % keyword style
+  language=Java,                 % the language of the code
+  rulecolor=\color{black},         % if not set, the frame-color may be changed on line-breaks within not-black text (e.g. comments (green here))
+  stringstyle=\color{mymauve},     % string literal style
+  tabsize=2,	                   % sets default tabsize to 2 spaces
+  title=\lstname                   % show the filename of files included with \lstinputlisting; also try caption instead of title
+}
+
+
+
+\begin{document}
+
+\newcommand\VRule[1][\arrayrulewidth]{\vrule width #1}
+%\newcommand{\specula}{\textsc{GRS}\xspace}
+\newcommand{\specula}{STR\xspace}
+
+% Copyright
+\setcopyright{acmcopyright}
+
+% DOI
+\doi{10.475/123_4}
+
+% ISBN
+\isbn{123-4567-24-567/08/06}
+
+%Conference
+\conferenceinfo{PLDI '13}{June 16--19, 2013, Seattle, WA, USA}
+
+\acmPrice{\$15.00}
+
+%
+% --- Author Metadata here ---
+\conferenceinfo{WOODSTOCK}{'97 El Paso, Texas USA}
+%\CopyrightYear{2007} % Allows default copyright year (20XX) to be over-ridden - IF NEED BE.
+%\crdata{0-12345-67-8/90/01}  % Allows default copyright data (0-89791-88-6/97/05) to be over-ridden - IF NEED BE.
+% --- End of Author Metadata ---
+
+\title{STR: speculative execution for partially-replicated datastores}
+
+%
+% You need the command \numberofauthors to handle the 'placement
+% and alignment' of the authors beneath the title.
+%
+% For aesthetic reasons, we recommend 'three authors at a time'
+% i.e. three 'name/affiliation blocks' be placed beneath the title.
+%
+% NOTE: You are NOT restricted in how many 'rows' of
+% "name/affiliations" may appear. We just ask that you restrict
+% the number of 'columns' to three.
+%
+% Because of the available 'opening page real-estate'
+% we ask you to refrain from putting more than six authors
+% (two rows with three columns) beneath the article title.
+% More than six makes the first-page appear very cluttered indeed.
+%
+% Use the \alignauthor commands to handle the names
+% and affiliations for an 'aesthetic maximum' of six authors.
+% Add names, affiliations, addresses for
+% the seventh etc. author(s) as the argument for the
+% \additionalauthors command.
+% These 'additional authors' will be output/set for you
+% without further effort on your part as the last section in
+% the body of your article BEFORE References or any Appendices.
+
+%\numberofauthors{3} %  in this sample file, there are a *total*
+% of EIGHT authors. SIX appear on the 'first-page' (for formatting
+% reasons) and the remaining two appear in the \additionalauthors section.
+%
+
+%\author{Zhongmiao Li$^{\dagger}$$^{\star}$, Peter Van Roy$^{\dagger}$ and Paolo Romano$^{\star}$ \\
+%	 {\normalsize $^ {\dagger}$Universit\'e catholique de Louvain \quad
+%          $^{\star}$Instituto Superior T\'ecnico} \\ [2mm]
+%          \email{\{zhongmiao.li, peter.vanroy\}@uclouvain.be}\\
+%          \email{\{zhongmiao.li, paolo.romano\}@ist.utl.pt}
+%}
+
+
+% There's nothing stopping you putting the seventh, eighth, etc.
+% author on the opening page (as the 'third row') but we ask,
+% for aesthetic reasons that you place these 'additional authors'
+% in the \additional authors block, viz.
+
+% Just remember to make sure that the TOTAL number of authors
+% is the number that will appear on the first page PLUS the
+% number that will appear in the \additionalauthors section.
+
+\maketitle
+
+\begin{abstract}
+
+%The performance of geographically distributed data stores is challenged by the existence of ineluctably large communication delays between datacenters, which exacerbates the costs induced to ensure consistency of replicated data.
+ This article introduces \specula (Speculative Transactional Replication), an innovative geo-replicated transactional data-store that exploits speculative concurrency control techniques to mask the latency of inter data-center synchronization. \specula provides programmers with the flexibility to adopt, on a per transaction basis, either strong or weak consistency semantics.
+
+On the one hand, the data replication protocol employed by \specula to ensure strong consistency, i.e., Snapshot Isolation (SI), departs from conventional designs, which  conservatively block transactions whenever these attempt to access data  updated by concurrently executing transactions. Conversely, \specula adopts a speculative approach, which avoids blocking transactions by allowing them to selectively observe the data-item versions produced by concurrent (pre-committed) transactions. This design choice allows \specula to achieve  up to XX$\times$ higher throughput and up to YY$\times$ lower latency than in state of the art strongly-consistent data stores.%, which suggests that, in geo-replicated datastores, the advantages stemming from embracing the risk of cascading aborts largely outweigh its drawbacks.
+
+On the other hand, \specula's weak consistency model, SPeculative Snapshot Isolation (SPSI), allow programmers to externalize the results of a transaction while this is still undergoing its final commit/certification phase, hence allowing for further enhancing  throughput and latency. A key distinguishing treat of SPSI is that it provides clear and stringent guarantees on the atomicity and isolation of the snapshots observed and produced during transaction execution. This spares programmers from having to cope with complex concurrency bugs that could arise when using alternative weakly consistent models, like eventual consistency.
+\end{abstract}
+
+
+%
+% The code below should be generated by the tool at
+% http://dl.acm.org/ccs.cfm
+% Please copy and paste the code instead of the example below. 
+%
+\begin{CCSXML}
+<ccs2012>
+<concept>
+	<concept_id>10002951.10003152.10003517.10003519</concept_id>
+	<concept_desc>Information systems~Distributed storage</concept_desc>
+	<concept_significance>500</concept_significance>
+</concept>
+<concept>
+	<concept_id>10002951.10002952.10003190.10003193</concept_id>
+	<concept_desc>Information systems~Database transaction processing</concept_desc>
+	<concept_significance>500</concept_significance>
+</concept>
+<concept>
+	<concept_id>10002951.10002952.10002953</concept_id>
+	<concept_desc>Information systems~Database design and models</concept_desc>
+	<concept_significance>500</concept_significance>
+</concept>
+
+</ccs2012> 
+\end{CCSXML}
+
+\ccsdesc[500]{Information systems~Distributed storage}
+\ccsdesc[500]{Information systems~Database transaction processing}
+\ccsdesc[500]{Information systems~Database design and models}
+
+
+%
+% End generated code
+%
+
+%
+%  Use this command to print the description
+%
+\printccsdesc
+
+% We no longer use \terms command
+%\terms{Theory}
+
+\keywords{Speculative execution; geo-replication; transactional datastore}
+
+
+\section{Conclusion}
+This paper proposed {\specula}, a novel protocol that uses speculative techniques to improve performance of distributed transactions. The three novel speculative techniques, i.e. speculative commit, speculative read and precise clock, collectively mitigate the performance bottleneck of existing transactional protocol. Extensive benchmark showed that our protocol achieves significantly higher throughput than state of the art non-speculative system and is particularly beneficial when workloads have high local conflict and low remote conflict.
+
+
+% We recommend abbrvnat bibliography style.
+\bibliographystyle{abbrv}
+\bibliography{references}
+\end{document}
