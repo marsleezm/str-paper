@@ -45,7 +45,7 @@
 %
 % For tracking purposes - this is V2.0 - May 2012
 
-\documentclass{sig-alternate-05-2015}
+\documentclass[preprint]{sigplanconf-eurosys}
 
 %\usepackage{amsmath}
 \usepackage{courier}
@@ -94,63 +94,12 @@
 \begin{document}
 
 \newcommand\VRule[1][\arrayrulewidth]{\vrule width #1}
-%\newcommand{\specula}{\textsc{GRS}\xspace}
 \newcommand{\specula}{STR\xspace}
-
-% Copyright
-\setcopyright{acmcopyright}
-
-% DOI
-\doi{10.475/123_4}
-
-% ISBN
-\isbn{123-4567-24-567/08/06}
-
-%Conference
-\conferenceinfo{PLDI '13}{June 16--19, 2013, Seattle, WA, USA}
-
-\acmPrice{\$15.00}
-
-%
-% --- Author Metadata here ---
-\conferenceinfo{WOODSTOCK}{'97 El Paso, Texas USA}
-%\CopyrightYear{2007} % Allows default copyright year (20XX) to be over-ridden - IF NEED BE.
-%\crdata{0-12345-67-8/90/01}  % Allows default copyright data (0-89791-88-6/97/05) to be over-ridden - IF NEED BE.
-% --- End of Author Metadata ---
 
 \title{STR: speculative execution for partially-replicated datastores}
 
-%
-% You need the command \numberofauthors to handle the 'placement
-% and alignment' of the authors beneath the title.
-%
-% For aesthetic reasons, we recommend 'three authors at a time'
-% i.e. three 'name/affiliation blocks' be placed beneath the title.
-%
-% NOTE: You are NOT restricted in how many 'rows' of
-% "name/affiliations" may appear. We just ask that you restrict
-% the number of 'columns' to three.
-%
-% Because of the available 'opening page real-estate'
-% we ask you to refrain from putting more than six authors
-% (two rows with three columns) beneath the article title.
-% More than six makes the first-page appear very cluttered indeed.
-%
-% Use the \alignauthor commands to handle the names
-% and affiliations for an 'aesthetic maximum' of six authors.
-% Add names, affiliations, addresses for
-% the seventh etc. author(s) as the argument for the
-% \additionalauthors command.
-% These 'additional authors' will be output/set for you
-% without further effort on your part as the last section in
-% the body of your article BEFORE References or any Appendices.
-
-%\numberofauthors{3} %  in this sample file, there are a *total*
-% of EIGHT authors. SIX appear on the 'first-page' (for formatting
-% reasons) and the remaining two appear in the \additionalauthors section.
-%
-
-%\author{Zhongmiao Li$^{\dagger}$$^{\star}$, Peter Van Roy$^{\dagger}$ and Paolo Romano$^{\star}$ \\
+\authorinfo{paper number XXX of XXX}
+%\authorinfo{Zhongmiao Li$^{\dagger}$$^{\star}$, Peter Van Roy$^{\dagger}$ and Paolo Romano$^{\star}$ \\
 %	 {\normalsize $^ {\dagger}$Universit\'e catholique de Louvain \quad
 %          $^{\star}$Instituto Superior T\'ecnico} \\ [2mm]
 %          \email{\{zhongmiao.li, peter.vanroy\}@uclouvain.be}\\
@@ -168,7 +117,6 @@
 % number that will appear in the \additionalauthors section.
 
 \maketitle
-
 \begin{abstract}
 
 %The performance of geographically distributed data stores is challenged by the existence of ineluctably large communication delays between datacenters, which exacerbates the costs induced to ensure consistency of replicated data.
@@ -185,40 +133,6 @@ On the other hand, \specula's weak consistency model, SPeculative Snapshot Isola
 % http://dl.acm.org/ccs.cfm
 % Please copy and paste the code instead of the example below. 
 %
-\begin{CCSXML}
-<ccs2012>
-<concept>
-	<concept_id>10002951.10003152.10003517.10003519</concept_id>
-	<concept_desc>Information systems~Distributed storage</concept_desc>
-	<concept_significance>500</concept_significance>
-</concept>
-<concept>
-	<concept_id>10002951.10002952.10003190.10003193</concept_id>
-	<concept_desc>Information systems~Database transaction processing</concept_desc>
-	<concept_significance>500</concept_significance>
-</concept>
-<concept>
-	<concept_id>10002951.10002952.10002953</concept_id>
-	<concept_desc>Information systems~Database design and models</concept_desc>
-	<concept_significance>500</concept_significance>
-</concept>
-
-</ccs2012> 
-\end{CCSXML}
-
-\ccsdesc[500]{Information systems~Distributed storage}
-\ccsdesc[500]{Information systems~Database transaction processing}
-\ccsdesc[500]{Information systems~Database design and models}
-
-
-%
-% End generated code
-%
-
-%
-%  Use this command to print the description
-%
-\printccsdesc
 
 % We no longer use \terms command
 %\terms{Theory}
