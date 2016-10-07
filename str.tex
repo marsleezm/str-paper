@@ -60,8 +60,10 @@
 \usepackage[english,ruled]{algorithm2e}
 \usepackage{multirow}
 \usepackage{float}
+\usepackage[pdftex]{graphicx}
 \usepackage{color}
-
+\usepackage{multirow}% http://ctan.org/pkg/multirow
+\usepackage{hhline}% http://ctan.org/pkg/hhline
 
 
 \newcommand*{\ttfamilywithbold}{\fontfamily{lmtt}\selectfont}
@@ -138,6 +140,8 @@ On the other hand, \specula's weak consistency model, SPeculative Snapshot Isola
 %\terms{Theory}
 
 \keywords{Speculative execution; geo-replication; transactional datastore}
+
+\input{introduction}
 
 
 \section{Conclusion}
