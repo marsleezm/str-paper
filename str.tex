@@ -99,7 +99,7 @@
 \newcommand\VRule[1][\arrayrulewidth]{\vrule width #1}
 \newcommand{\specula}{STR\xspace}
 
-\title{STR: speculative execution for partially-replicated datastores}
+\title{STR: speculative execution for geo-replicated datastores}
 
 \authorinfo{paper number XXX of XXX}
 %\authorinfo{Zhongmiao Li$^{\dagger}$$^{\star}$, Peter Van Roy$^{\dagger}$ and Paolo Romano$^{\star}$ \\
@@ -123,12 +123,15 @@
 \begin{abstract}
 
 %The performance of geographically distributed data stores is challenged by the existence of ineluctably large communication delays between datacenters, which exacerbates the costs induced to ensure consistency of replicated data.
- This article introduces \specula (Speculative Transactional Replication), an innovative geo-replicated transactional data-store that exploits speculative concurrency control techniques to mask the latency of inter data-center synchronization. \specula provides programmers with the flexibility to adopt, on a per transaction basis, either strong or weak consistency semantics.
+ This article introduces \specula (Speculative Transactional Replication), a geo-replicated transactional data-store that exploits speculative concurrency control techniques to mask the latency of inter data-center synchronization. \specula provides programmers with the flexibility to adopt, on a per transaction basis, either strong or weak consistency semantics.
 
-On the one hand, the data replication protocol employed by \specula to ensure strong consistency, i.e., Snapshot Isolation (SI), departs from conventional designs, which  conservatively block transactions whenever these attempt to access data  updated by concurrently executing transactions. Conversely, \specula adopts a speculative approach, which avoids blocking transactions by allowing them to selectively observe the data-item versions produced by concurrent (pre-committed) transactions. This design choice allows \specula to achieve  up to XX$\times$ higher throughput and up to YY$\times$ lower latency than in state of the art strongly-consistent data stores.%, which suggests that, in geo-replicated datastores, the advantages stemming from embracing the risk of cascading aborts largely outweigh its drawbacks.
+On the one hand, the data replication protocol employed by \specula to ensure strong consistency, i.e., Snapshot Isolation (SI), departs from conventional designs, which  conservatively block transactions whenever they attempt to access data  updated by concurrently executing transactions. Conversely, \specula adopts a speculative approach, which avoids blocking transactions by allowing them to observe the data-item versions produced by concurrent (pre-committed) transactions. The evaluation indicates when there is non-trivial degree of local contention, the advantages stemming from embracing the risk of cascading aborts largely outweigh its drawbacks. On the other hand, \specula's weak consistency model, SPeculative Snapshot Isolation (SPSI), allow programmers to externalize the results of a transaction while this is still undergoing its commit/certification phase, hence allowing for further enhancing  throughput and latency. A key distinguishing treat of SPSI is that it provides clear and stringent guarantees on the atomicity and isolation of the snapshots observed and produced during transaction execution. This spares programmers from having to cope with complex concurrency bugs that could arise when using alternative weakly consistent models, like eventual consistency.
 
-On the other hand, \specula's weak consistency model, SPeculative Snapshot Isolation (SPSI), allow programmers to externalize the results of a transaction while this is still undergoing its final commit/certification phase, hence allowing for further enhancing  throughput and latency. A key distinguishing treat of SPSI is that it provides clear and stringent guarantees on the atomicity and isolation of the snapshots observed and produced during transaction execution. This spares programmers from having to cope with complex concurrency bugs that could arise when using alternative weakly consistent models, like eventual consistency.
+We performed an extensive evaluation, using a micro benchmark and two realistic workloads (TPC-C and RUBiS). The results show that comparing with a state-of-the-art transactional protocol, our strong consistency approach greatly increases throughput when there is non-trivial degree of local contention (which is the case for TPC-C and RUBiS), and allowing externalizing speculative results and pipelining transactions (the weak consistency model) reduces latency and even gives further speedup.
+%This design choice allows \specula to achieve  up to XX$\times$ higher throughput and up to YY$\times$ lower latency than in state of the art strongly-consistent data stores., which suggests that, in geo-replicated datastores, the advantages stemming from embracing the risk of cascading aborts largely outweigh its drawbacks.
 \end{abstract}
+
+
 
 
 %
@@ -143,6 +146,7 @@ On the other hand, \specula's weak consistency model, SPeculative Snapshot Isola
 \keywords{Speculative execution; geo-replication; transactional datastore}
 
 \input{introduction}
+\input{relatedwork}
 
 
 \section{Conclusion}
