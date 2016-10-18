@@ -1,0 +1,283 @@
+\section{The \specula protocol}
+\label{sec:protocol}
+This section presents the \specula protocol. First (\S \ref{subsec:baseline}), we give an overview the protocol, introducing the key techniques that differentiate it from conventional transactional protocols. Next (\S \ref{subsec:execution}), we describe the protocol in detail. Finally, we discuss about the fault tolerance of \specula and how to control the aggressiveness of speculation.
+
+\iffalse
+\subsection{Transaction execution}
+Figure \ref{fig:txn_state} presents the execution state diagram of a speculative transaction.
+
+\begin{figure}[t]
+\centering
+\hspace{-6mm}
+\includegraphics[scale = 0.3]{figures/state-machine.pdf}
+\caption{Diagram illustrating the possible state transitions of a transaction in \specula.}
+\label{fig:txn_state}
+\end{figure}
+\fi
+
+\subsection{Protocol overview}
+\label{subsec:overview}
+\iffalse
+In this section we illustrate the functioning of a baseline protocol, which is representative of the key design choices of state of the art strongly-consistent  protocols for geo-replicated transactional data-stores~ \cite{spanner, cockroach, terry2013consistency}. The baseline protocol has the following three main features: (i) it ensures Snapshot Isolation, an isolation level widely used in transactional datastore, e.g., like in Clock-SI~\cite{clocksi} and Walter~\cite{sovran2011transactional}, (ii) it uses decentralized physical clocks to order events, avoiding centralized sequencer-based solutions that represent a single point of failure and a potential bottleneck for the entire system, e.g., like in Spanner~\cite{spanner} and SCORe~\cite{peluso2012score}, and (iii) it supports partial replication policies, which enhances fault tolerance and reduces access latency without incurring the extra storage, operational cost and scalability limitations imposed by full replication~\cite{bettina-partial}.
+
+The main execution steps of the protocol are the following ones:
+\begin{enumerate}
+\item A transaction is started in a server and it is assigned the physical time of the server as its snapshot time. A process of that server coordinates the transaction on behalf of the client.
+\item The transaction performs a sequence of operations: update operations are buffered in the local server; a read operation to a key is sent to its owner partition, which retrieves the latest version of the key that is older than the transaction's snapshot time.
+%\text Read request can be be sent to any replica of the owning partition and the partition can only serve the request if it is up to date (its physical time being higher than the snapshot).
+\item The transaction's write-set is certified after executing all operations. All keys belonging to local partitions are firstly certified. If the local certification passes, the other keys are sent to the master replica of any accessed remote partitions for certification. The master replica of a partition successfully pre-commits (or prepares) a transaction if its write-set has no write-write conflict with concurrent transactions in its key range. In this case, it acquires the locks on the transaction's writeset, and set its physical time as the transaction's prepare time.
+\item In order to ensure fault tolerance, upon pre-committing a transaction, a master replica does not only acknowledge its transaction coordinator. It also propagates the prepare message to its slave replicas, along with any metadata necessary for supporting the transaction's recovery in case of failures of the master. Upon reception of the prepare message from their master, slave replicas also acknowledge the transaction coordinator.
+\item As soon as all the replicas of updated partitions have prepared, the transaction coordinator commits the transaction. It takes the maximal of all prepare time as the transaction's commit time, then sends commit requests to updated partitions and  replies to clients.
+\end{enumerate}
+%\textbf{Physical time} A read request to a partition is suspended if its snapshot time is larger than the partition's physical time, until the partition's physical time catches up, i.e. the snapshot is available in that partition. The same rule applies in case an update request an update request, to ensure that a transaction's commit timestamp is always larger than its snapshot time. Readers can refer to more details in \cite{clocksi}.\\\\
+
+By the above description, we observe that the transaction commit phase encompasses several inter-data communication step latencies, which are typically on the order of tens or hundreds of milliseconds. This leads to two critical performance issues:
+\begin{itemize}
+\item the commit phase, which encompasses a minimum of 2 and a maximum of 3 inter-data center network communication steps\footnote{Depending on the relative placement of transaction coordinator and of the master and slave replicas of the partitions by the transaction. The only exception is in case all processes involved in the commit phase reside in the same data center, which means that data is not geo-replicated.}, lies in the critical path of execution of transactions. As such, these latencies are fully exposed to the users of the data-stores, and can severely affect their perceived quality of service.
+\item also the duration of the pre-commit locks can vary from a minimum of 2 to 3 inter-data center network communication steps. This is likely to induce severe lock-convoying effects in workloads characterized by non-negligible data contention probability, as it is often the case for many realistic workloads that contain a small number of frequently contended data items (a.k.a., hotspots). As we will also show in \S \ref{sec:evaluation}, in such scenarios, the effects of data contention can dramatically limit the maximum throughput achievable by the system.
+\end{itemize}
+\fi
+
+\subsection{Protocol overview}
+\label{sub:sc}
+At its core, \specula is based on transactional protocols that employ optimistic concurrency control \cite{clocksi, mdcc}: a transaction typically has a short execution phase where it performs multiple read and write operations, then it tries to commit by certifying its write-set, during which pre-commit locks are maintained on data items being certified. Unlike these conventional protocols, \specula optimistically exposes these pre-commit versions to other transactions. Although a naive modification to these protocols, e.g. allowing prepared versions to be visible to all other transactions, could achieve this effect, this may have performance penalty if not carefully handled, besides it can expose applications arbitrary snapshots, e.g. non-atomic updates of transactions or updates of conflicting transactions.
+
+The following sub-sections describe the key techniques \specula employs to provide application developers stringent guarantees of speculative snapshots and enhance the efficiency of speculation. First, \specula introduces a \textbf{local certification} phase, which certifies a transaction against other local originated transactions to only produce meaningful speculative states. Next, to increase the likelihood of performing speculative read, we introduce a novel timestamp assignment scheme, namely \textbf{precise clock}; last, to further extract the throughput advantage of speculation, we discuss \textbf{pipelining speculative transactions}.
+
+\subsubsection{Local certification and speculative read}
+After the execution phase, rather than directly certifying a transaction's write-set at its master partitions, \specula first employs a local certification phase to certify the transaction's write-set against other transactions of local data partitions. A transaction only passes local certification if it has no conflict with local committed transactions, local prepared transactions and local speculatively-committed transactions.
+
+
+
+\specula has a local certification phase that a transaction is certified against other local-originated transactions to ensure that
+
+ as denoted in property \textbf{reference the right property}.  
+
+Nevertheless, as we have discussed in \S \ref{sec:overview}, we would like to still provide meaningful guarantee to the `speculative snapshot' other transactions can observe, namely SPSI. Therefore, to ensure SPSI property 3, a transaction can only speculatively-commit if locally, it does no conflict with committed transactions and speculatively-committed transactions. Based on the baseline protocol, we modify the local certification phase, so that during local certification, a transaction is not only certified against committed transactions, but also against local speculatively-committed transactions. After passing local certification, the transaction undergoes the \textbf{speculative commit} stage, during which its updates are assigned a speculative-commit timestamp and applied to the local storage, so that they will be atomically visible to local transactions.
+
+Speculative commit develops \textit{flow dependence}. Essentially, we assume transactions from the client to have implicit causal relation, so if a speculative transaction is aborted, all its following transactions from the same client will be aborted, i.e. \textit{cascading abort}; moreover, a transaction can not commit before its dependent transactions commit. We propose a simple approach to control the `aggressiveness' of speculative commit, that is to restrict the maximal number of pending speculatively-committed transactions for each client. Therefore a client can only speculatively-commit more transactions when previous pending ones are committed or aborted. The maximal number of speculative transactions for clients are named \textit{speculation length}.
+
+
+Speculative read allows transactions to read updates of previous speculatively-committed transactions. More specifically, a transaction is permitted to read transactions finally committed and transactions speculatively-committed at the same node, before it starts (as SPSI property 1 states). A straw-man approach is to allow reading a prepared version if the prepare time is below the reader's snapshot. However, this is problematic for our targeting setting: data is partially replicated, so a speculative transaction's data may be in remote servers; a speculative transaction can be prepared in different partitions with different timestamps, so reading with the same timestamp does not guarantee including all updates of a transaction to read. Therefore, we rely on the aforementioned speculative commit phase to ensure SPSI property 1: it essentially applies a speculatively-committed transaction's updates (even data that is not replicated locally) to local storage with a speculative-commit timestamp. Due to this guarantee, we devised a simple speculative read rule: with a snapshot time, a transaction is permitted to read local speculative records with 'speculative-commit timestamp' smaller than its snapshot time.
+
+Speculative read develops \textit{data dependency}, such that a transaction that has read speculative data can not commit, until the transaction it has read from commits or aborts. A speculative read can have two outcomes: if the speculative transaction finally commits, with a commit timestamp no larger than the commit time of the transaction, the read can commit; on the other hand, if the speculative transaction aborts, or commits with a larger timestamp, the speculative version should not belong to the snapshot of the read so the reader should be aborted.
+
+
+\subsection{Speculative read}
+\label{sub:sr}
+\iffalse
+\subsection{Speculative read}
+\begin{figure}[tbh]
+\centering
+\hspace{-6mm}
+\centering\includegraphics[scale = 0.48]{figures/NoSpeculativeRead}
+\caption{\textit{Transaction T2 tries to read prepared value of T1 and gets blocked.} Horizontal lines denote the state of key X and transaction coordinator TC1.}
+\label{fig:specula_read}
+\vspace{-3mm}
+\end{figure}
+Speculative commit allows a transaction coordinator to perform optimistic work while its transaction is still being certified, but its transaction's prepared keys are inaccessible for the whole prepare duration. As shown in figure \ref{fig:specula_read}, after speculatively-commit T1, the transaction coordinator, TC1, starts a new transaction T2 that tries to read key X that is prepared by T1. Because key X's final state is unknown, T2 is blocked until T1 finishes. When a system has some frequently accessed data (a.k.a., hotspots), such a blocking scenario may occur frequently. In these scenarios, speculating on transaction commit alone will yield very limited performance benefits.
+\fi
+
+Speculative read allows transactions to read updates of previous speculatively-committed transactions. More specifically, a transaction is permitted to read transactions finally committed and transactions speculatively-committed at the same node, before it starts (as SPSI property 1 states). A straw-man approach is to allow reading a prepared version if the prepare time is below the reader's snapshot. However, this is problematic for our targeting setting: data is partially replicated, so a speculative transaction's data may be in remote servers; a speculative transaction can be prepared in different partitions with different timestamps, so reading with the same timestamp does not guarantee including all updates of a transaction to read. Therefore, we rely on the aforementioned speculative commit phase to ensure SPSI property 1: it essentially applies a speculatively-committed transaction's updates (even data that is not replicated locally) to local storage with a speculative-commit timestamp. Due to this guarantee, we devised a simple speculative read rule: with a snapshot time, a transaction is permitted to read local speculative records with 'speculative-commit timestamp' smaller than its snapshot time.
+
+Speculative read develops \textit{data dependency}, such that a transaction that has read speculative data can not commit, until the transaction it has read from commits or aborts. A speculative read can have two outcomes: if the speculative transaction finally commits, with a commit timestamp no larger than the commit time of the transaction, the read can commit; on the other hand, if the speculative transaction aborts, or commits with a larger timestamp, the speculative version should not belong to the snapshot of the read so the reader should be aborted.
+
+\subsection{Reducing transaction's logical duration}
+\label{sub:pc}
+Allowing a transaction to speculatively read a prepared version embodies the following optimistic assumption: (i) the prepared transaction will commit, and (ii) it will commit with a timestamp no larger than the reader's snapshot time. However, the second assumption is flawed with the current commit time assignment scheme. The current scheme (as in other physical-clock based protocols \cite{spanner, cockroach, clocksi}) simply requests all updated partitions to propose their physical time as prepare time, then calculates the commit time as the maximal of prepare time. Therefore, a transaction's commit time will be approximately the physical time its prepare requests reach all updated partitions. As a consequence, in geo-replicated setting this scheme always causes a large duration between a transaction's start time and commit time, namely a transaction's \textit{logical duration}. Figure \ref{fig:specula_read} illustrates an example, where a transaction T2 is aborted due to reading from a speculative transaction, T1, that commits with large timestamp. In the example, T1 prepares a local key X and gets speculatively-committed with local prepare time 110. While T1 is being remotely certified, T2 starts at time 125 and speculatively reads V from T1. However, finally T1 commits with timestamp 140. Since T2's snapshot should only contains transactions committed up to 120, T2 should be aborted.
+
+The fundamental problem of producing large logical duration is that it limits the effect of pipelining updates to keys, which is empowered by speculative read. Since SI forbids committing concurrent transactions that update the same key, the longer logical duration is, the less transactions can be committed within a period for a key: if the average logical duration of a transaction is 250ms, at most four transactions per second can be committed for each key, despite the use of speculation.
+
+\begin{figure}[tbh]
+\centering
+\hspace{-6mm}
+\centering\includegraphics[scale = 0.48]{figures/SpeculativeRead}
+\caption{\textit{Transaction reading an invalid prepared version.} Horizontal lines denote two distant partitions PA and PB. Numbers in boxes denote a partition's physical time.}
+\label{fig:specula_read}
+\end{figure}
+
+To mitigate this problem, we propose a time assignment scheme, namely \textit{Precise Clock}, that produces small logical duration for transactions. \textit{Precise Clock} strikes to propose small prepare timestamps, while not violating any properties of SI or SPSI. On the contrary, we find that the current timestamp assignment scheme proposes unnecessarily large prepare timestamps. Protocols like \cite{clocksi, spanner} enforce each partition to propose monotonically-increasing (physical) timestamps than previous received events (timestamps of read and prepare). In essence, this ensures that after a transaction read a key from a partition, further transactions that update that key can only commit with a larger timestamp than the previous reader's snapshot time, so that the reader's snapshot remains unchanged and thus consistent. However, under this rule, even transactions that update disjoint keys will get higher timestamp than the reader's snapshot time. It is easy to see that this is not necessary: imagine the current protocol is applied to a datastore where each partition only contains a single key; in that case, non-conflicting transactions, which would access the same partition due to data placement, will access disjoint partitions and get different timestamps. Based on this intuition, we propose a new scheme that \textbf{precisely} tracks the read/write causal relations and tries to propose minimal prepare time. We combine the use of physical and logical clocks (as in \ref{hybridclock, bravoclock}): our scheme still uses physical time as a transaction's snapshot time, but maintains a logical clock per key to track the timestamp of transactions that have read the key, i.e. \textit{high time}. We give its read and prepare protocols below. Its pesudo-code will be presented together with the \specula protocol. 
+\iffalse
+ and we will discuss its correctness.
+\fi
+ 
+\begin{itemize}
+\item \textbf{Read} When a transaction $T_x$ reads a key K, it is blocked if K is currently being prepared with a prepare time smaller than $T_x$'s snapshot ($ST_x$). Otherwise, $Tx$ reads K's highest version below $ST_x$ and updates K's high time (HT) to $max(HT, ST_x)$.
+\item \textbf{Prepare} When preparing K, a transaction $T_y$ gets prepare time as $max(HT, ST_y)+1$. $T_y's$ commit timestamp is the maximal of the prepare time for all keys of its write-set.
+\end{itemize}
+
+\subsubsection{Pipelining speculative transactions}
+As its name suggests, speculatively-committing a transaction denotes treating a transaction as committed before knowing the definitive answer. This enables two potential benefits: (i) this can mask inter-datacenter latency and allow clients to perform optimistic work, and (ii) other transactions could speculatively read its data as if it is committed. Allowing the former is simple: the system can simply notify clients while his transaction is still being certified (as in \cite{pang2014planet}). Nevertheless, as we have discussed in \S \ref{sec:overview}, we would like to still provide meaningful guarantee to the `speculative snapshot' other transactions can observe, namely SPSI. Therefore, to ensure SPSI property 3, a transaction can only speculatively-commit if locally, it does no conflict with committed transactions and speculatively-committed transactions. Based on the baseline protocol, we modify the local certification phase, so that during local certification, a transaction is not only certified against committed transactions, but also against local speculatively-committed transactions. After passing local certification, the transaction undergoes the \textbf{speculative commit} stage, during which its updates are assigned a speculative-commit timestamp and applied to the local storage, so that they will be atomically visible to local transactions.
+
+Speculative commit develops develops \textit{flow dependence}. Essentially, we assume transactions from the client to have implicit causal relation, so if a speculative transaction is aborted, all its following transactions from the same client will be aborted, i.e. \textit{cascading abort}; moreover, a transaction can not commit before its dependent transactions commit. We propose a simple approach to control the `aggressiveness' of speculative commit, that is to restrict the maximal number of pending speculatively-committed transactions for each client. Therefore a client can only speculatively-commit more transactions when previous pending ones are committed or aborted. The maximal number of speculative transactions for clients are named \textit{speculation length}.
+
+\subsection{Speculative protocol execution}
+\label{subsec:execution}
+The major difference of \specula and the baseline protocol (\S \ref{subsec:baseline}) is that \specula involves one more execution step after the \textit{local certification phase}, namely the \textit{speculative commit phase}. In speculative commit, \specula applies speculative commit change locally to make them visible to further transactions.
+
+\paragraph{Start transaction and execution} As in the baseline protocol, a transaction is initialized in a server and assigned the server's physical time as its snapshot time (Alg1, lines 1-3). Then it performs a sequences of read and write operations.
+
+\paragraph{Local certification} After the execution all operations, the transaction undergoes the local certification phase. To enforce SPSI property XX \textbf{to ref the correct property}, the transaction's updated keys are sent to their local replicated partitions (no matter the partition is a master or slave replica) to check write-write conflict with committed and speculatively committed transactions. Keys not replicated locally are sent to a local \textbf{cache} partition, which temporarily stores speculative updates to non-local keys created by previous local speculative transactions (Alg1, lines 12-13). A partition replies \textbf{abort} in case conflicts are detected; otherwise, the partition prepares the transaction and proposes a prepare timestamp according to the precise clock rule: for each key, it retrieves the key's $HighTime$ and proposes $HighTime+1$; then the maximal of proposed time for all keys is returned as the prepare timestamp (Alg2, lines 21-23). Essentially, a transaction passed local certification is ensured that, among all keys replicated locally (and temporarily cached keys), the transaction has no conflict with committed transactions and local speculative transactions. Note that at this point, these prepared records are still not visible to other local transactions, as they may be prepared with different timestamps and allowing them to be visible already could violate consistent snapshot.
+
+\iffalse
+the transaction coordinator also certifies all keys belonging to local slave partitions and the cache (which contains all keys of speculatively-committed transactions locally, as will be explained in following text), against locally prepared or speculatively-committed transactions and committed transactions (Alg1, line 13). The local cache only temporarily caches speculative updates for local transactions to read. If a transaction's write-set does not conflict with (i.e. overlaps in duration) existing prepared or speculative-committed transactions in a partition, the partition calculates the prepare time for this transaction and prepares each key, or places them in a waiting queue if these keys are already prepared (Alg2, lines 17-18). The timestamp calculation follows the PreciseClock rule, that takes the maximum of the transaction's snapshot time and the high time of all keys to certify (Alg2, lines 14-16). The partition replies to the prepare request if all keys are prepared and replicates its prepared write-set to its replicas (Alg2, lines 20-21). Note that if a transaction tries to read prepared records, it will be blocked as in the baseline protocol.
+\fi
+
+\paragraph{Speculative commit} Upon receiving prepared replies from all updated local partitions (including the cache partition), the coordinator calculates the \textit{specula-commit timestamp} for this transaction as the maximal of proposed prepare timestamps and it sends \textbf{spec\_commit} messages to all involved local partitions (Alg1, lines 15-18). Partitions convert prepared records from \textit{prepared} state to \textit{specula-committed} state, with \textit{specula-commit timestamp} (Alg2, lines 24-27). Only by then, these records can be read by local transactions. Meanwhile, the transaction coordinator sends updates to corresponding remote master partitions for remote certification. The local certification step and this step are indeed a 2PC that makes a transaction's speculative updates atomically visible to local transactions (Alg1, lines 19-20). Note that programmers can choose whether to expose this speculative commit guess to clients. While concealing speculative commit is safe, exposing speculative commit can reduce observed latency and allow clients to issue more transactions, but wrong speculation may need complex compensation.
+
+\paragraph{Speculative read}  A transaction's read request for a key is sent to local partitions, if the key is replicated locally; if the key is not locally replicated, before requesting remote replicas, the transaction first tries to read from the local cache to check if previous local speculative transactions has updated that key (Alg1, lines 5-10). A transaction can read all transactions committed before its snapshot (Alg2, lines 5-6) as well as local transactions speculatively committed before the snapshot (Alg2, lines 9-13). Reading a speculative value creates data dependency between the reader and the owner transaction of the speculative value (Alg2, lines 8-10). Additionally, when a key is being read, its high time is updated according to precise clock rule (Alg2, line 2).
+
+\paragraph{Final commit/abort} A transaction coordinator finally commits a transaction, when (i) it has received prepare replies from all updated partitions and their replicas, (ii) all data dependency is resolved, i.e. it has received \textit{'read valid'} notification for all speculatively-read data, and (iii) flow dependency is resolved, i.e. the client has no pending speculative transaction before this transaction. To finally commit a transaction, the transaction coordinator broadcasts the commit decision to all replicas of updated partitions, atomically sets the transaction updates from 'speculatively-committed' to committed state and notifies all readers of this transaction if their read is still valid (Alg2 lines 29-35). Another important condition not presented in the code is that, a speculative transaction can not commit until none of its speculative records have other preceding speculative records. This is because if there is still preceding speculative transaction, this transaction may commit with a large timestamp that causes write-write conflict with the current transaction and leads to abort.
+
+A speculative transaction is aborted if its certification check fails, its speculative reads are invalid, or any of its preceding transactions from the same  client are aborted. To abort a speculative transaction, its coordinator removes its local speculatively-committed updates, aborts all following transactions from the same and notifies \textit{'read aborted'} to all transactions that have read from it. 
+
+\begin{algorithm}[!ht]
+\caption{Coordinator protocol}
+\label{alg:coord_protocol1}
+{
+%\footnotesize
+\scriptsize
+\begin{tabbing}
+xxx\=xxxx\=xxxx\=xxxx\=xxxx\=xxxx\=xxxx\kill
+$1$\>\textbf{StartTransaction}(Tx)\\
+$2$\>\>Tx.Snapshot$\leftarrow$\textit{current\_time()}\\
+$3$\>\>Tx.Coord$\leftarrow$\textit{self()}\\
+\\
+$4$\>\textbf{ReadDataItem}(Tx, Key)\\
+$5$\>\>\textbf{if} \textit{in\_tx\_buffer}(Tx, Key) \textbf{then}\\
+$6$\>\>\>\textbf{return} \textit{read\_from\_buffer}(Tx, Key)\\
+$7$\>\>\textbf{else if} \textit{is\_key\_replicated}(Key) \textbf{then}\\
+$8$\>\>\>\textbf{return} \textit{read\_from\_replica}(Tx, Key)\\
+$9$\>\>\textbf{else}\\
+$10$\>\>\>\textbf{return} \textit{read\_from\_cache}(Tx, Key)\\
+\\
+$11$\>\textbf{SpeculativeCommit}(Tx)\\
+$12$\>\>\textbf{for} \verb {Updates,  \verb Partition} \textbf{in} Tx.WriteSet \\
+$13$\>\>\>\textbf{send} \verb {prepare,  \verb Tx,  \verb Updates} \textbf{to} \textit{local(Partition)} \\
+$14$\>\>\textbf{wait until}\\
+$15$\>\>\>\textbf{receive all} \verb {prepared, \verb Tx,  \verb PrepTime} \\
+$16$\>\>\>\>SCTime $\leftarrow$ \textit{max}(\textbf{all} PrepTime)\\
+$17$\>\>\>\>\textbf{send} \verb {spec_commit,  \verb Tx,  \verb SCTime} \\
+$18$\>\>\>\>\>\textbf{to} \textit{local(Tx.Partitions)}\\
+$19$\>\>\>\>\textbf{send} \verb {prepare,  \verb Tx}  to \textit{Tx.RemotePartitions}\\
+$20$\>\>\>\>\textbf{return} \verb {spec_commit,  \verb SCTime} \\
+$21$\>\>\>\textbf{receive} \verb {abort, \verb Tx} \\
+$22$\>\>\>\>\textbf{Abort}(Tx)\\
+\\
+$23$\>\textbf{Commit}(Tx)\\
+$24$\>\>\textit{atomically commit Tx's spec-committed updates}\\
+$25$\>\>\>\textit{and remove Tx's cached updates}\\
+$26$\>\>\textbf{foreach} \textit{Tr} \textbf{in}
+\textit{Tx.ReadBy} \textbf{do}\\
+$27$\>\>\>\textbf{if} Tr.Snapshot $>=$ Tx.CommitTime \textbf{then}\\
+$28$\>\>\>\>\textbf{send} \verb {read_valid,  \verb Tx}  \textbf{to} \textit{Tr.Coord}\\
+$29$\>\>\>\textbf{else}\\
+$30$\>\>\>\>\textbf{send} \verb {read_invalid,  \verb Tx}  \textbf{to} \textit{Tr.Coord}\\
+$31$\>\>\textit{notify committed to the client}\\
+\\
+$32$\>\textbf{Abort}(Tx)\\
+$33$\>\>\textit{atomically clean Tx's spec-committed updates}\\
+$34$\>\>\>\textit{and remove Tx's cached updates}\\
+$35$\>\>\textbf{foreach} Tr \textbf{in}
+Tx.ReadBy \textbf{do}\\
+$36$\>\>\>\textbf{send} \verb {abort,  \verb Tr}  to Tr.coord\\
+$37$\>\>\textbf{foreach} Ts \textbf{in}
+Tx.Successors \textbf{do}\\
+$38$\>\>\>Abort(Ts)\\
+$39$\>\>\textit{notify aborted to the client}\\
+\end{tabbing}
+}
+\end{algorithm}
+
+\begin{algorithm}[!ht]
+\caption{Server protocol}
+\label{alg:server_protocol}
+{
+%\footnotesize
+\scriptsize
+\begin{tabbing}
+xxx\=xxxx\=xxxx\=xxxx\=xxxx\=xxxx\=xxxx\kill
+$1$\>\textbf{upon} receiving message \verb {read,  \verb Tx,  \verb Key} \\
+$2$\>\>HighTime.Key$\leftarrow$ max(HighTime.Key, Tx.Snapshot)\\
+$3$\>\>\{Tw, State, Value\}$\leftarrow$\\
+$4$\>\>\>\>Store.latest\_before(Key, Tx.Snapshot)\\
+$5$\>\>\textbf{if} State = committed\\
+$6$\>\>\>\textbf{reply} Value\\
+$7$\>\>\textbf{else if} State = prepared\\
+$8$\>\>\>Tw.WaitingReaders.add(Tx)\\
+$9$\>\> \textbf{else if} State = spec-committed\\
+$10$\>\>\>\textbf{if} \textit{local\_read()}\\
+$11$\>\>\>\>Tw.ReadBy.add(Tx)\\
+$12$\>\>\>\>Tx.ReadFrom.add(Tw)\\
+$13$\>\>\>\>\textbf{reply} Value\\
+$14$\>\>\>\textbf{else}\\
+$15$\>\>\>\>Tw.WaitingReaders.add(Tx)\\
+\\
+$16$\>\textbf{upon} receiving message \verb {prepare,  \verb Tx} \\
+$17$\>\>\textbf{foreach} \{Key, Value\} in Tx.WriteSet \textbf{do}\\
+$18$\>\>\>\textbf{if} Key is updated by Ty $\wedge$ Ty.State = prepared\\
+$19$\>\>\>\>\textbf{wait until} Ty.State = committed \textbf{or} aborted\\
+$20$\>\>\textbf{if} CertificationCheck(Tx) is successful\\
+$21$\>\>\>PrepTime$\leftarrow$Tx.Snapshot+1\\
+$22$\>\>\>\textbf{foreach} \{Key, Value\} in Tx.WriteSet \textbf{do}\\
+$23$\>\>\>\>PrepTime$\leftarrow$max(PrepTime, HighTime.Key+1)\\
+$24$\>\>\>Store.Key.insert(Tx, \{prepared, Value, PrepTime\})\\
+$25$\>\>\>\textbf{send} \verb {prepare,  \verb Tx,  \verb PrepTime}  to \textit{replicas()} \\
+$26$\>\>\>\textbf{reply} \verb {prepared,  \verb Tx,  \verb PrepTime} \\
+$27$\>\>\textbf{else}\\
+$28$\>\>\>\textbf{reply} \verb {aborted, \verb Tx} \\
+\\
+$29$\>\textbf{upon} receiving message \verb {spec_commit,  \verb Tx,  \verb SCTime} \\
+$30$\>\>\textbf{foreach} \{Key, Value\} in Tx.WriteSet \textbf{do}\\
+$31$\>\>\>Store.Key.update(Tx, \{spec-committed, Value,\\
+$$\>\>\>\> SCTime\})\\
+$32$\>\>\>\textit{unblock waiting preparing transactions}\\
+$33$\>\>\>\textit{reply to waiting readers}\\
+\\
+$34$\>\textbf{upon} receiving message \verb {commit,  \verb Tx,  \verb CTime} \\
+$35$\>\>\textit{abort conflicting spec-committed or prepared transactions}\\
+$36$\>\>\textbf{foreach} \{Key, Value\} in Tx.WriteSet \textbf{do}\\
+$37$\>\>\>Store.Key.update(Tx, \{committed, Value, CTime\})\\
+$38$\>\>\>\textit{unblock waiting preparing transactions}\\
+$39$\>\>\>\textit{reply to waiting readers}\\
+\\
+$40$\>\textbf{upon} receiving message \verb {abort,  \verb Tx} \\
+$41$\>\>\textbf{foreach} \{Key, Value\} in Tx.WriteSet \textbf{do}\\
+$42$\>\>\>Store.Key.remove(Tx)\\
+$43$\>\>\>\textit{unblock waiting preparing transactions}\\
+$44$\>\>\>\textit{reply to waiting readers}
+\\
+
+\end{tabbing}
+}
+\end{algorithm}
+\iffalse
+\subsection{Correctness}
+\subsubsection{PreciseClock} 
+We sketch a brief proof to show that PreciseClock provides Snapshot Isolation.
+\begin{itemize}
+\item \textbf{No write-write conflict} For any concurrent transaction that conflicts, we allow at most one to commit and abort the others.
+\item \textbf{Consistent snapshot} While reading a key, if a transaction encounters a prepare record with a smaller timestamp than its snapshot, it is blocked. The transaction is unblocked until that prepared record is removed. If that prepared record is removed due to abort, the transaction will not read it value; otherwise, if that prepared record is committed, the transaction reads it, if its commit time is no larger than the transaction's snapshot. Therefore, a transaction will never read from aborted transactions or transactions with a commit time larger than their snapshot time. On the other hand, after a transaction finishes reading a key, the key's high time will be at least as large as the transaction's snapshot (Alg2, line 2), so no further transaction can commit a new version of this key with timestamp no larger than its snapshot (Alg2, lines 14-16). Therefore, a transaction will never miss values with commit time no larger than its snapshot.
+\iffalse
+\item \textbf{Transaction commits with a total-order} we can totally order transactions in the following steps: firstly, we order two transactions with their commit timestamp; if they have an identical commit timestamp, we compare each transaction's largest updated key (which we assume to have a total order). Since two transactions with the same commit timestamp must have disjoint key sets (otherwise, at least one would have been aborted), we can derive total order among any two transactions.
+\fi
+\end{itemize}
+
+\subsubsection{SPSI} 
+Due to space limit, here we sketch a high-level proof that a transaction running in SPSI would never observe a state that contains write-write conflict, which may break application invariants. By contraction, we assume that a transaction may observe a set of transactions that some of them have write-write conflict. First, we identify the types of transactions that can exist in the system, in terms of a node: prepared transactions, local speculatively-committed transactions, remote speculatively-committed transactions and committed transactions. Since for a transaction, it can not read remote speculative transactions and prepared transactions, so we restrict the proof to only a set of speculative transactions and committed transactions. There are three combinations: conflicts among speculative transactions, conflicts among committed transactions and conflict among speculative and committed transactions. Apparently, there can not be any conflict among committed transactions, as our protocol do not allow write-write conflicting concurrent transactions to commit. 
+
+On the other hand, a transaction could only be speculatively-committed if it is certified against local committed transactions and speculatively-committed transactions and has no conflict with them. Therefore, the conflict can only be between speculative transactions and committed transactions that can not be certified during local certification. Indeed, the conflict between these transactions could only be for keys that is not replicated in the node, as local certification can not detect this conflict. Imagine a local transaction T1 updates K1 and K2 and a remote transaction T2 updates K2 and K3. They conflict in K2. T2 should commit and T1, although was speculatively-committed, should abort. However, a transaction first tries to read K1 and then read K3. If it reads K1of T1 and K3 of T3, it would contain conflicting transactions. However, as we ensure FIFO order between nodes, when T1's abort decision should have reached the node of T before T fetches K3, so T is aborted before reading invalid value.
+
+\subsection{Discussions}
+\paragraph{Fault tolerance}
+We discuss about how we could handle the failure of different components.\\\\
+\textbf{Client failure} Except for storing the timestamp of latest observed transactions, our protocol does not store any other metadata in the client side. Therefore, the failure of a client does not affect the execution of transactions or the user experience of any other clients. However, the client may lose session guarantee after restart.\\\\
+\textbf{Server failure} The failure of a server also brings down its data partitions and transaction coordinators. In our protocol, the master replica and slave replicas of a data partition are synchronously replicated  \textbf{cite view synchrony}, so as long as the failure of a replica is detected, the protocol could exclude that replica and continue execution. On the other hand, currently the state of a transaction coordinator is not replicated, so the failure of a transaction coordinator will block all prepared transactions managed by it to be in prepare states. To tackle that, one could use well-known techniques to replicate the states of transaction coordinator within a single datacenter to survive failure.\\\\
+\textbf{Datacenter failure} \textbf{To be filled.}
+
+\paragraph{Local certification}
+Local certification adds nearly neligible delay, but could exclude transactions having local conflict to enter remote certification, which increases the success chance of speculation. In the current protocol, local certification denotes certifying a transaction against committed transactions and speculatively-committed transactions of the local node. Nevertheless, the notion of `local' and `remote' is relative. Since servers in the same datacenter can have relative low latency among each other, one could imagine extending the local certification phase to also certify all transactions belonging to other nodes in the same server. This can be an interesting extension to our protocol.
+
+\subsection{Fault tolerance}
+With speculation, a client gets the notification of 'speculatively\_commit' of a transaction before its local prepare records are replicated. If failure happens before local write-set is replicated, the transaction state is lost and the client can not recover his previous speculatively-committed transactions. To cope with this issue, one could log the transaction write-set to disk before replying to clients, or replicate it to a node in the same datacenter.
+\fi
