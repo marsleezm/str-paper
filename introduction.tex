@@ -1,9 +1,41 @@
 \section{Introduction}
 \label{sec:introduction}
 
-Modern large-scale online services strive to serve global clients with low latency and high availability. To achieve this goal, online services are increasingly deployed in multiple geographically-scattered datacenters (geo-replication)~\cite{spanner, kraska2013mdcc, li2012making}. Geo-replication allows services to be available even in the presence of a complete datacenter outage and it reduces access latency by bringing data closer to clients. On the down side, though, the performance of geographically distributed data stores is challenged by the existence of unavoidably large communication delays between datacenters: two datacenters on opposite sides of the earth incur a minimal latency of 133ms, which is utterly bounded by the speed of light and can not be further reduced~\cite{bailis2013highly}. 
 
-The inherently large synchronization overheads affecting geo-replicated data stores has a deep impact on the performance of the replication protocol employed to enforce data consistency and on the choice of the consistency semantics that they provide to application developers.  
+Modern online services are increasingly deployed in multiple geographically-scattered datacenters (geo-replication)~\cite{spanner, kraska2013mdcc, li2012making}. Geo-replication allows services to remain available even in the presence of outages affecting entire data centers   and it reduces access latency by bringing data closer to clients. On the down side, though, the performance of geographically distributed data stores is challenged by the existence of unavoidably large communication delays between datacenters: two datacenters on opposite sides of the earth incur a minimal latency of 133ms, which is utterly bounded by the speed of light and can not be further reduced~\cite{bailis2013highly}. 
+
+The inherently large synchronization overheads that affect geo-replicated data stores has a deep impact on the performance of the protocol employed to enforce data consistency. The problem is particularly exacerbated in partially-replicated data-stores that aim at ensuring strong consistency semantics, i.e., ACID transactions --- two features that are recognized as highly desirable to enhance, on the one hand, system's scalability~\cite{xxx}, and simplify, on the other hand, applications' development. 
+
+For this class of systems, in fact, some form of global synchronization, typically based on a Two-Phase commit protocol scheme~\cite{xxx}, is unavoidable in order to safely detect conflicts developed among  concurrent transactions executing at different data-centers. The adverse impact on performance of inter-data center synchronization is of a twofold nature: i) system's throughput can be severely impaired, as  transactions need to hold locks during their global validation phase, which can cripple the effective concurrency that these systems can achieve; ii) client-perceived latency is also directly affected, since the inter-data-center  synchronization phase lies in the critical path of execution of transactions.
+
+
+%This has motivated the investigation of a broad spectrum of data replication protocols for geo-replicated systems~\cite{xxx} as well as the exploration of diverse trade-off regarding the  consistency semantics offered to application developers~\cite{xxx}.
+
+This work focuses on investigating the opportunities and challenges associated with the use of \textit{speculative} processing techniques in geo-distributed partially replicated transactional data stores  that provide a widely employed consistency criterion, i.e., Snapshot Isolation~\cite{xxx}. Generally speaking, speculative transactional processing techniques aim at avoiding to block transaction processing in presence of potential conflicts with other concurrent transactions (possibly executing at remote data-centers) by making an optimistic assumption on how  such conflicts will be eventually resolved.
+
+More in detail, we distinguish between two classes of speculative transaction processing techniques, which we call \textit{internal} and \textit{external} speculation depending on whether their effects are transparent or not for the programmers.
+
+{\bf REVIEWED UP TO HERE}
+
+
+. Internal speculation techniques are completely transparent to the programmers, in
+
+
+With the term ``internal speculation'' we refer to a set of (distributed) concurrency control techniques that speculate on the outcome of concurrent transactions in order to avoi
+
+
+
+or replicated transaction
+
+ of integrating speculative tec
+
+ focuses on the  of a set of speculative transaction processing techniques, 
+
+In this class of systems, where inter-replica synchronization has a dominant cost
+
+
+
+
 
 Data stores that embrace strongly consistent semantics, like Scatter~\cite{scatter} and Google's Spanner~\cite{spanner} are reckoned~\cite{shute2012f1} to greatly reduce the complexity of building distributed applications by providing programmers with the powerful abstraction of ACID transactions. However, it is also well known~\cite{brewer2012cap}  that enforcing strong-consistency requires introducing the latency of several inter-datacenter network round trips along the critical path of transactions' execution. This has not only a direct impact on the user-perceived latency --- a key discrimination factor for online services and a potential cause of large revenue losses  \cite{schurman2009user}, but also on throughput. In fact, throughout the execution of the replica synchronization protocol --- typically based on a Two-phase commit scheme~\cite{spanner,peluso2012score} --- existing strongly consistent data stores maintain, so called, pre-commit locks on the data items accessed by transactions. The duration of these locks, in geo-distributed data stores, can easily last on the order of a few hundreds of milliseconds. As a consequence, in workloads that generate non-minimal data contention, the probability of incurring lock convoying effects is greatly amplified, which can severely hinder the maximum throughput the system can withstand.
 
