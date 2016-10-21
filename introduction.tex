@@ -30,7 +30,7 @@ on the other hand, speculative reads can significantly reduce the ''effectiveÂ´Â
 
 However, the employment of these speculative techniques raises two non-trivial challenges:
 
-\vspace{4pt}\noindent {\bf New subtle concurrency anomalies.} Unless properly designed and coupled with the underlying distributed concurrency control scheme, speculative transaction processing techniques can expose transactions to new types of concurrency anomalies, such as 
+\vspace{4pt}\noindent {\bf Concurrency anomalies.} Unless properly designed and coupled with the underlying distributed concurrency control scheme, speculative transaction processing techniques can expose transactions to new types of concurrency anomalies, such as 
 observing non-atomic snapshots that reflect only partially the updates produced by concurrent transactions, or non-isolated snapshots that encompass the updates produced by conflicting transactions. 
 
 
