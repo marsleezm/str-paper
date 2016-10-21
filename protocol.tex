@@ -220,6 +220,7 @@ $44$\>\>\>\textit{reply to waiting readers}
 \end{algorithm}
 
 \subsection{Self-tuning algorithm}
+\label{subsec:tuning}
 As have been discussed in \S \ref{subsec:pipeline} and \S \ref{subsec:pc}, the optimal speculation chain length is not trivial to choose, while the impact of speculative read also depends on workload. Therefore, we propose a simple self-tuning algorithm, which dynamically adjusts the degree of speculation to chase the optimal throughput, in a transparent way to application developers. The algorithm takes a black-box approach and can be totally agnostic of the underlying implementation. We use a centralized tuner that gathers system throughput from all nodes, in a periodic fashion, decides new speculation degree based on statistics, then sends this information to all nodes. Specifically, we place different speculation degrees in an mono-dimensional search space and then the self-tuning algorithm uses a hill searching algorithm \cite{hillclimbing} find the speculation degree that gives optimal throughput. Our search space encompasses the following increasing degrees of speculation: at the lowest extreme, both speculative reads and speculative commits are disabled; then, only speculative reads are enabled; finally, both speculative reads and speculative commits are enabled, and then the chain length vary from 1 to the maximal length, which can either be infinite or be given by developers. 
 
 
