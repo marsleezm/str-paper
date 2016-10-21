@@ -127,7 +127,7 @@ This work investigates the opportunities and challenges stemming from the use of
 
 First, we tackle the problem of providing clear and stringent guarantees on the atomicity and isolation in presence of speculative operations that may expose uncommitted data   to both active  transactions and external clients. We do so by introducing SPeculative Snapshot Isolation (SPSI), a novel consistency criterion that extends the well-known Snapshot Isolation semantics in an intuitive, yet rigorous way.
 
-SPSI serves as the theoretical foundation to build \specula, a transactional data store that incorporates an innovative set of speculative concurrency control techniques that allow to achieve up to XX$\times$ throught speed-ups and XX\% latency reduction with popular benchmarks like TPC-C and Rubis. Further, \specula integrates self-tuning mechanisms that
+SPSI serves as the theoretical foundation on top of which we design and implement \specula, a transactional data store that incorporates an innovative set of speculative concurrency control techniques that allow to achieve up to XX$\times$ throught speed-ups and XX\% latency reduction with popular benchmarks like TPC-C and Rubis. Further, \specula integrates self-tuning mechanisms that
 dynamically adjusts the aggressiveness of the speculative mechanisms based on the workload characteristics. This allows \specula to maximize the performance gains it attains in workloads where speculation is likely to succeed, as well as to provide robust performance even when faced with unfavourable workloads that suffer of high mispeculation rates.
 
 %
@@ -157,10 +157,10 @@ dynamically adjusts the aggressiveness of the speculative mechanisms based on th
 \keywords{Speculative execution; geo-replication; transactional datastore}
 
 \input{introduction}
-\input{relatedwork}
+\input{relatedwork_2}
 \input{overview}
 \input{protocol}
-\input{evaluation}
+%\input{evaluation}
 
 \section{Conclusion}
 This paper proposed {\specula}, a novel protocol that uses speculative techniques to improve performance of distributed transactions. The three novel speculative techniques, i.e. speculative commit, speculative read and precise clock, collectively mitigate the performance bottleneck of existing transactional protocol. Extensive benchmark showed that our protocol achieves significantly higher throughput than state of the art non-speculative system and is particularly beneficial when workloads have high local conflict and low remote conflict.
