@@ -1,98 +1,119 @@
 \section{System  and data  model}
 \label{sec:overview}
 
-\specula is a data-store designed to operate in large-scale, geo-distributed data centers. Our current implementation of \specula runs on a key-value store, although the protocol it employs is agnostic to the underlying data model (e.g., relational). The whole dataset is partitioned across multiple replicated shards, or partitions, which are maintained by servers (or nodes) scattered across geographically dispersed data centers.
+Our target system model encompasses a set of geo-distributed data centers, each hosting a (typically large) set of servers, or nodes. 
 
+In the following, we shall assume a key-value data model. This is done for simplicity and since  our current implementation of \specula runs on a key-value store. However, the protocol we present  is agnostic to the underlying data model (e.g., relational or object-oriented). 
+
+The whole dataset is partitioned across multiple replicated shards, or partitions.
 Each data partition is responsible for a key range and it maintains multiple timestamped versions for each key.  Synchronous master-slave replication is employed to enforce fault tolerance and transparent failover, as used in \cite{spanner, baker2011megastore}. A partition has a master replica and several slave replicas, and, at commit time, update transactions contact the masters of the partitions they accessed. These verify whether transactions can be correctly serialized  and propagate their updates, along with any metadata (e.g., locks held by the transaction) required for their recovery, to its replicas.
 This scheme allows for transparent fail-over, in case of failure of master replicas. Further, it allows reads to be served by any replica, which allows client to freely select the one that is geographically closer.
 
 
-Analogously to other recent geo-distributed data stores~\cite{spanner, clocksi, terry2013consistency}, \specula supports flexible data placement policies. A server can host multiple data partitions, either master replicas or slave replicas. A data partition can be replicated within a datacenter and across datacenters, and no server or datacenter is required to host all partitions. 
+Partitions may be scattered across the nodes in the system using arbitrary data placement policies. A server can host multiple data partitions, either master replicas or slave replicas. A data partition can be replicated within a datacenter and across datacenters. Also, no server or datacenter is required to host all partitions. 
 
-Last but not least, each server is equipped with a standard hardware clock, which we only assume to monotonically move forward.
+In absence of failures, the distributed concurrency protocol presented in \S \ref{sec:protocol} does not rely on any synchrony assumption, i.e., it is designed operate in a pure asynchronous system. It only requires that  servers are equipped with loosely synchronized, conventional hardware clocks, which we only assume to monotonically move forward. Additional synchrony assumptions, though, are required,  in presence of failures~\cite{FLP}, to ensure the correctness of the synchronous master-slave replication scheme embedded in \specula's protocol. Our current prototype employs a classic primary-backup approach, which assumes perfect failure detection capabilities~\cite{chandra-tueg-failure-detectors}. However, it would be straightfoward to replace the current replication scheme to use, for instance, Paxos implementations, which would allow adopting weaker synchrony models~\cite{partial-synchrony}.
+
+
+%Analogously to other recent geo-distributed data stores~\cite{spanner, clocksi, terry2013consistency}, \specula supports flexible data placement policies. A server can host multiple data partitions, either master replicas or slave replicas. A data partition can be replicated within a datacenter and across datacenters, and no server or datacenter is required to host all partitions. 
+
+
 
 \section{Programming Model}
 \label{sec:programming_model}
 
-ACID transactions provide a powerful programming abstraction by ensuring Atomicity, Consistency, Isolation and Durability. To enforce these properties, ACID transactions specify a set of rigorous execution rules, which often require synchronization between geo-dispersed data replicas. In state of the art data stores, like Google's Spanner~\cite{spanner}, committing a transaction entails the execution of a two phase commit protocol among the master of different partitions along with a consensus instance among the replicas of each partition~\cite{cockroach,spanner,schiper2010p}. These protocols introduce in the critical path of the commit phase the latency of several inter-datacenters communication steps, which is detrimental to user experience \cite{schurman2009user}.
 
-An intuitive way to mask this large inter-datacenters latency is to make an optimistic guess about the result of a transaction, instead of waiting out the uncertainty. The consequence is that, rather than always getting correct and irrevocable results, clients get predicted results that may occasionally go wrong. As we have discussed in \S \ref{sec:introduction}, although replying users with a probably correct answer, instead of a definitive one, seems unacceptable in an idealistic business model, it is indeed commonly used in practice \cite{helland2009building, brewer2012cap}, to tame large latency and low availability: an ATM allows clients to withdraw money even in the presence of network partition, and charges users overdraft fees if necessary; flight companies usually oversell tickets to ensure high occupancy rate, to achieve higher revenue while risking compensating passengers that could not get booked seats.
+%ACID transactions provide a powerful programming abstraction by ensuring Atomicity, Consistency, Isolation and Durability. To enforce these properties, ACID transactions specify a set of rigorous execution rules, which often require synchronization between geo-dispersed data replicas. In state of the art data stores, like Google's Spanner~\cite{spanner}, committing a transaction entails the execution of a two phase commit protocol among the master of different partitions along with a consensus instance among the replicas of each partition~\cite{cockroach,spanner,schiper2010p}. These protocols introduce in the critical path of the commit phase the latency of several inter-datacenters communication steps, which is detrimental to user experience \cite{schurman2009user}.
+%
+%An intuitive way to mask this large inter-datacenters latency is to make an optimistic guess about the result of a transaction, instead of waiting out the uncertainty. The consequence is that, rather than always getting correct and irrevocable results, clients get predicted results that may occasionally go wrong. As we have discussed in \S \ref{sec:introduction}, although replying users with a probably correct answer, instead of a definitive one, seems unacceptable in an idealistic business model, it is indeed commonly used in practice \cite{helland2009building, brewer2012cap}, to tame large latency and low availability: an ATM allows clients to withdraw money even in the presence of network partition, and charges users overdraft fees if necessary; flight companies usually oversell tickets to ensure high occupancy rate, to achieve higher revenue while risking compensating passengers that could not get booked seats.
+%
+%Allowing speculative commit raises a relevant question: if clients try to read pending updates of speculatively-committed transactions, how should the system react? A straw-man proposal is to ignore these speculative versions (by returning the last committed version or blocking clients until these versions are committed or aborted), therefore transactions still execute in a strongly-consistent fashion and no extra complexity is introduced (as exploited by \cite{pang2014planet}). Albeit neat, this approach has potential problems: returning older versions gives clients weird semantics, while blocking until speculative updated are finalized can introduce large latency especially when the system has hotspots. To avoid these problems, \specula allows speculatively-committed transactions' updates to be visible to others transactions. In further sections, we shall more precisely define the consistency semantics (\S \ref{subsec:ssi}) as well as how the protocol design.
+%
+%\iffalse
+%The prevalence of geo-replication has fueled the Eventual Consistency (BASE transactions) v.s. Strong Consistency (ACID transactions) argument. While achieving high availability and low latency by avoiding inter-datacenter latency, eventual consistency only guarantees that ``...changes made to one copy eventually migrate to all", according to one of its earliest definitions \cite{kawell1988replicated}. Programmers have to explicitly code ad-hoc logic to deal with concurrency anomalies and ensure consistency requirements. On the other hand, strong consistency provides a powerful programming abstraction via enforcing a set of rigorous execution rules, which often requires synchronization between geo-dispersed data replicas. In state of the art data stores, like Google's Spanner~\cite{spanner}, committing a transaction entails the execution of a two phase commit protocol among the master of different partitions along with a consensus instance among the replicas of each partition~\cite{cockroach,spanner,schiper2010p}. These protocols introduce in the critical path of the commit phase the latency of several inter-datacenters communication steps. Such a latency can not only have a detrimental impact on user experience in human-facing interactions~\cite{schurman2009user}, but also lead to lock convoying effects that can severely hinder concurrency and throughput.
+%\fi
 
-Allowing speculative commit raises a relevant question: if clients try to read pending updates of speculatively-committed transactions, how should the system react? A straw-man proposal is to ignore these speculative versions (by returning the last committed version or blocking clients until these versions are committed or aborted), therefore transactions still execute in a strongly-consistent fashion and no extra complexity is introduced (as exploited by \cite{pang2014planet}). Albeit neat, this approach has potential problems: returning older versions gives clients weird semantics, while blocking until speculative updated are finalized can introduce large latency especially when the system has hotspots. To avoid these problems, \specula allows speculatively-committed transactions' updates to be visible to others transactions. In further sections, we shall more precisely define the consistency semantics (\S \ref{subsec:ssi}) as well as how the protocol design.
+This section discusses how to extend the conventional programming model exposed by (non-speculative) transactional systems to encompass the two speculative techniques that we investigate in this work, namely speculative reads and speculative commits.
 
-\iffalse
-The prevalence of geo-replication has fueled the Eventual Consistency (BASE transactions) v.s. Strong Consistency (ACID transactions) argument. While achieving high availability and low latency by avoiding inter-datacenter latency, eventual consistency only guarantees that ``...changes made to one copy eventually migrate to all", according to one of its earliest definitions \cite{kawell1988replicated}. Programmers have to explicitly code ad-hoc logic to deal with concurrency anomalies and ensure consistency requirements. On the other hand, strong consistency provides a powerful programming abstraction via enforcing a set of rigorous execution rules, which often requires synchronization between geo-dispersed data replicas. In state of the art data stores, like Google's Spanner~\cite{spanner}, committing a transaction entails the execution of a two phase commit protocol among the master of different partitions along with a consensus instance among the replicas of each partition~\cite{cockroach,spanner,schiper2010p}. These protocols introduce in the critical path of the commit phase the latency of several inter-datacenters communication steps. Such a latency can not only have a detrimental impact on user experience in human-facing interactions~\cite{schurman2009user}, but also lead to lock convoying effects that can severely hinder concurrency and throughput.
-\fi
+Generally speaking, the integration of a speculative transaction processing technique in the programming model raises different issues depending on whether recovery from mispeculation can be automatically achieved by the transactional system, or whether it entails the development of application-dependent compensation logic. Based on this rationale, we identify two classes of speculative techniques, which we call, respectively, \textit{internal} and \textit{external} speculation.
 
-We illustrate how programmers can exert control over speculation via \specula's  programming interface true the example code of a simplified online shopping transaction (see Listing 1), . %Based on a programming interface as a conventional transactional API that allows issuing read/write on key-value pairs, we extend its transactional demarcation interface with speculative options. Besides allowing speculative read/commit, the interface also allows registering callbacks that define what to perform when a transaction reaches speculative commit and final commit/abort states.
+Speculative reads (as well as, e.g., optimistic concurrency control~\cite{xxxx}) belong to class of internal speculation techniques, as the effects of mispeculation remain hidden from the clients until the transaction is committed, either in a speculative or non-speculative fashion. The system can hence recover from a mispeculation by simply aborting and restarting the corresponding transaction. Speculative commits, conversely, belong to the class of external speculation techniques, as the logic for coping with mispeculation scenarios in which a transaction aborts after having externalized its results  (via a speculative commit) is inherently application-dependent~\cite{eventual-consistency}. As such, depending on a number of application-dependant factors, the cost and complexity associated with the development and execution of compensation logic for speculatively committed transactions may be unacceptably large.
+
+The programming model we propose in this work builds on these considerations by empowering  developers to circumscribe the scenarios in which speculative commits should be used and to exploit application-dependant information with the aim to maximize the chance of successful speculation.
+
+This result is achieved by extending the conventional API used to start a transaction, which we encapsulate in the \textit{beginTx} primitive, to accept as input four parameters:
+\begin{itemize}
+\item \textsc{canSpecCommit}, a callback that is activated when the transaction execution is completed, i.e., the transactions issues a commit request. The callback must return a boolean value that determines whether the transaction should be allowed to undergo a speculative commit, or not. This allow programmers to exert fine-grained control on which transaction instances should be speculatively committed.  This callback executes within the same context of its corresponding transaction. This guarantees that any data-item access issued from within this callback is executed on the same data snapshot observed by its corresponding transaction. 
+\item three additional callbacks, i.e., \textsc{specCommitHandler}, \textsc{finalCommitHandler}, and \textsc{finalAbortHandler},  which allow  programmers to specify the application-dependent logic that should be executed upon a speculative commit, a final commit or if a transaction is aborted after having been speculatively committed, respectively. Like \textsc{canSpecCommit}, the \textsc{specCommitHandler} handlers executes in the same  scope of the transaction it is associated with. Conversely, final commit and final abort handlers callbacks do not execute in the same context of the transaction they are associated to. This is unavoidable since these handlers are executed only after the transaction's outcome has been already determined. 
+\end{itemize}
 
 
-%In order to allow programmers to  control these factors, \specula exposes an intuitive programming interface, which extends in a simple way the classic API used by conventional transactional systems. 
 
-
-%Figure~\ref{lst:interface}.
-
-\begin{lstlisting}[caption=Example transaction that buys an item]   
-checkRisk(ItemInfo, TxInfo) { 
-    return ItemInfo.Price < 100 &&
-                    TxInfo.CommitProb > 0.9
+ 
+\begin{lstlisting}[caption=Example use case of the proposed programming model.]   
+checkRisk() { 
+    return TxInfo.get("ItemPrice") < 100 &&
+                    TxInfo.get("CommitProb") > 0.9
 }
 
-scHandler(TxInfo) {
+scHandler() {
     // Display "Your order has been placed."
 }
 
-fcHandler(TxInfo) {
+fcHandler() {
     // Send an email to the user notifying success order
 }
 
-faHandler(TxInfo) {
+faHandler() {
     // Retry three times, if still fails then,
-    // Send an email to the user saying sorry
+    // Apologize with the user via email.
 }
 
-buyItemTx(ItemKey, ItemInfo, TxInfo){
+buyItemTx(ItemInfo){
     Tx = beginTx(
-                checkRisk(ItemInfo, TxInfo),//If speculative commit
-                True,//Allow speculative read
-                scHandler(TxInfo),//Speculative commit callback
-                fcHandler(TxInfo),//Final commit callback
-                faHandler(TxInfo));//Final abort callback
-    Item = tx.read(ItemKey);
+                checkRisk(),//Allow speculative commit?
+                scHandler(),//Speculative commit callback
+                fcHandler(),//Final commit callback
+                faHandler());//Final abort callback
+    Item = tx.read(ItemInfo);
     Item.quantity -= 1;
-    Tx.write(ItemKey, Item);
+    Tx.write(ItemInfo, Item);
+    TxInfo.put("ItemPrice", Item.price);
     Tx.commit();
 }
 \end{lstlisting}
 
-{\bf Enabling speculative commits and/or reads.} \specula extends the transaction begin API with two optional boolean parameters, namely \textit{specCommit} and \textit{specRead} (which default to true if they are left unspecified). The former allows programmers to define whether a transaction should be speculatively committed: as in the example, programmers specify a \textit{checkRisk} function to decide whether to perform speculative commit. We shall define more rigorously the consistency guarantees ensured by \specula for a speculatively committed transaction in the next section. 
-\iffalse
-Yet, in a nutshell, a speculatively committed transaction is guaranteed to have executed respecting the SI semantics for a history comprising all final committed transactions and locally originated speculatively committed transactions.
-\fi
+The callbacks specified in \textit{beginTx} can obtain additional information related to the transaction execution via  an in-memory map called \textsc{TxInfo}. To this end, transactions can programatically store in \textsc{TxInfo}  any information that could be relevant for its callbacks (e.g., the transaction's input parameters). \textsc{TxInfo} can also used by the speculative transactional system to make available statistical information on the effectiveness of speculation for a specific type of transaction (e.g., how often speculative commits are followed by a final commit event).
 
-The \textit{specRead} parameter allows to define whether a transaction may observe data items versions created by previously speculatively committed transactions, or whether it should rather be exclusively allowed to read final committed data item versions.
 
-As illustrated in the code example, the use of these two flags empowers application (or middleware) programmers to craft logic aimed to maximize the chance of successful speculation, as well as to circumscribe the scenarios in which speculation should be used. For instance, in the considered example, a transaction can be allowed to be speculatively committed only if it is buying an inexpensive item and if it has experienced a low abort rate over a recent time-window, and is allowed to read speculatively committed data versions. Yet, the two flags can be used independently. For instance, a developer may decide to allow a transaction $T$ to observe speculatively committed data versions even though $T$ is not allowed to speculative commit. This may enhance the chances of having $T$ commit, by ensuring that $T$ can read the versions generated by concurrent speculatively committed transactions, while avoiding to ever expose speculative state to the client that issued $T$.
+No additional changes to the conventional APIs of a non-speculative transactional system are required, which contributes to minimize the complexity faced by developers who wish to embrace the proposed speculative programming paradigm to enhance the performance of their applications. 
+
+
+
+
+Listing 1 illustrates the use of the proposed API through an example code of a simplified online shopping transaction. In the considered example, the checkRisk callback allows a transaction to be speculatively committed only if it is buying an inexpensive item and has experienced a low abort rate over a recent time-window. The former information is programmaticaly stored  in the \textsc{TxInfo} map during transaction's execution, whereas the latter is updated by the speculative data store in a fully transparent way for application developers. The example code presents a simple approach that aims to reduce the frequency with which mispeculation need to be actually exposed to the final-users of the system: since the semantics of buying an item does not change during different runs, the system can just retry a few times the buy item transaction if it gets aborted after speculation
+
+
+%{\bf Enabling speculative commits and/or reads.} \specula extends the transaction begin API with two optional boolean parameters, namely \textit{specCommit} and \textit{specRead} (which default to true if they are left unspecified). The former allows programmers to define whether a transaction should be speculatively committed: as in the example, programmers specify a \textit{checkRisk} function to decide whether to perform speculative commit. We shall define more rigorously the consistency guarantees ensured by \specula for a speculatively committed transaction in the next section. 
+%\iffalse
+%Yet, in a nutshell, a speculatively committed transaction is guaranteed to have executed respecting the SI semantics for a history comprising all final committed transactions and locally originated speculatively committed transactions.
+%\fi
+%
+%
+%As illustrated in the code example, the use of these two flags empowers application (or middleware) programmers to craft logic aimed to maximize the chance of successful speculation, as well as to circumscribe the scenarios in which speculation should be used. For instance, in the considered example, a transaction can be allowed to be speculatively committed only if it is buying an inexpensive item and if it has experienced a low abort rate over a recent time-window, and is allowed to read speculatively committed data versions. Yet, the two flags can be used independently. For instance, a developer may decide to allow a transaction $T$ to observe speculatively committed data versions even though $T$ is not allowed to speculative commit. This may enhance the chances of having $T$ commit, by ensuring that $T$ can read the versions generated by concurrent speculatively committed transactions, while avoiding to ever expose speculative state to the client that issued $T$.
 
 It should be noted that enabling the possibility of observing speculatively committed data version raises subtle issues.  Snapshot Isolation (SI) has not been defined with speculation in mind. In particular, it does not specify which data snapshots should be observable in histories encompassing speculatively committed transactions. We cope with this issue in the following Section, in which we shall introduce a generalization of SI, called SPeculative Snapshot Isolation (SPSI), that will serve as target consistency criterion for \specula.
 
 
-{\bf Reacting to Speculative Commit and Final Commit/Abort Events.} Upon beginning a new transaction, programmers have to specify three callback functions: \textit{onSpeculativeCommit()}, \textit{onFinalAbort()} and \textit{onFinalCommit()}.
+%{\bf Reacting to Speculative Commit and Final Commit/Abort Events.} Upon beginning a new transaction, programmers have to specify three callback functions: \textit{onSpeculativeCommit()}, \textit{onFinalAbort()} and \textit{onFinalCommit()}.
 
 As its name suggests, onSpeculativeCommit() allows programmers to define which code should be executed if a transaction is speculatively committed (i.e., it passes local certification). Furthermore, the other two callbacks (\textit{onFinalAbort()} and \textit{onFinalCommit()} ) specify the actions to take when a transaction is eventually committed or aborted after speculative commit, respectively. The example code presents a simple way to avoid notifying users too often about speculative abort: since the semantics of buying an items does not change during different runs, the system can just retry the buy item transaction if it gets aborted after speculation.
 
-\section{Consistency semantics}
-By introducing speculative commit and speculative read, programmers gain flexible control over the execution of transactions to mitigate large latency and improve performance. Nevertheless, developers may have perplexity about their exact consistency semantics. Before proposing the supported consistency criteria, namely SPeculative Snapshot Isolation (SPSI), we reason about the properties that leads to the design of SPSI, which aims at providing meaningful and intuitive semantics to programmers despite using these speculative techniques.
-
-First, despite the existence of speculative transactions, all finally committed transactions should still preserve the original guaranteed strong consistency criteria, e.g. no write-write conflict among concurrent transactions as in Snapshot Isolation. In fact, a simple approach to reduce synchronization is to allow executing and committing transactions with different consistency levels, e.g. executing certain `important' transactions with Serializability while other `non-important' ones with weak isolation levels, such as Read Committed. However, mixing consistency indeed degrades the consistency guarantee of the system to the weakest one supported, as strict execution rules enforced by a consistency level can be violated by transactions of lower consistency semantics. This can easily introduce concurrent anomalies not conceived by application developers.
-
-Secondly, if a transaction is not supposed to read speculative data, it should observe a snapshot as it would read in a strongly-consistent transactional protocol. This guarantee ensures that making one transaction speculative will not require reasoning or rewriting any other transactions.
-
-Last but not least, we would like `speculative snapshots' read by transactions to give meaningful semantics. The most `meaningful' snapshots would be ones that do not contain states that could not exist in the original strong consistency level, such as conflicting writes, non atomic updates etc. Providing meaningful semantics alleviates programmers' effort to write applications in a speculative fashion, as they only need to think about when to perform speculative operations and compensation logics when speculative transactions abort, but not dealing with any concurrency anomalies. 
-
-\subsection{Speculative Snapshot Isolation}
+\section{Speculative Snapshot Isolation}
 \label{subsec:ssi}
-As mentioned above, SPSI, namely the target consistency criterion for \specula, has been designed to generalize the well-known, and widely adopted, SI, whose definition we recall in the following~\cite{weikum2001transactional}:
+As mentioned above, SPSI has been designed to generalize the well-known SI criterion and define, in a rigorous yet intuitive way, the consistency semantics guaranteed to user-level applications when using speculative transaction processing techniques.
+
+Before presenting the SPSI specifications, we first recall the definition of SI~\cite{weikum2001transactional}:
 
 \begin{itemize}
 \item \textsc{SI Property 1.} (\textit{Snapshot Read}) All operations read the most
@@ -101,31 +122,30 @@ recent committed version as of the time when the transaction began.
 each pair of committed concurrent transactions must be disjoint.
 \end{itemize}
 
-\iffalse
 The design process that led us to the definition of SPSI has been driven by three main goals/requirements:
 \begin{itemize}
-\item providing meaningful correctness guarantees in presence of executions encompassing both speculatively and final committed transactions;
+\item simplify application's development by preventing subtle concurrency anomalies (like the atomicity and isolation violations illustrated in Figures~\ref{fig:ex1} and~\ref{fig:ex2}) that may arise in systems that allow transactions to speculatively observe pre-committed data or externalize speculatively committed data;
 \item preserving the intuitiveness and simplicity of the original SI specification;
-\item enabling highly scalable and efficient implementations, in which transactions can be speculatively committed after a local certification phase.
-
-Guided by these three objectives,
+\item enabling highly scalable and efficient implementations, in which transactions can be speculatively committed based only on local certification activities.
 \end{itemize}
-\fi
 
-We specify SPSI via the following properties:
+
+Guided by these three objectives, we specify SPSI via the following properties:
 \begin{itemize}
-\item \textsc{SPSI Property 1.} (\textit{Speculative Snapshot Read}) A transaction $T$ originated at a node $S$ must observe the most recent data item versions created by  transactions that i) had final committed by the time $T$ started (independently of the site where these transactions originated), or ii) had speculatively committed by the time T started and were also originated at  $S$.
+\item \textsc{SPSI Property 1.} (\textit{Speculative Snapshot Read}) A transaction $T$ originated at a node $S$ must observe the most recent data item versions created by the transactions that i) have final committed by the time $T$ started (independently of the site where these transactions originated), or ii) have speculatively committed by the time T started and were also originated at node $S$.
 \item \textsc{SPSI Property 2.} (\textit{No Write-Write Conflicts among Final Committed Transactions}) The write sets of
 each pair of finally committed concurrent transactions must be disjoint.
-\item \textsc{SPSI Property 3.} (\textit{No Write-Write Conflicts among Speculatively Committed and Committed Transactions}) The write sets of a speculatively committed originated at a node $n$ must not intersect with the write-set of concurrent transaction that i) has been final committed, or ii) has been speculatively committed and originated at node $n$.
+\item \textsc{SPSI Property 3.} (\textit{No Write-Write Conflicts among Speculatively Committed and Committed Transactions}) The write sets of a speculatively committed transactions originated at a node $n$ must not intersect with the write-set of any concurrent transaction that i) has been final committed, or ii) has been speculatively committed and originated at node $n$.
 \item \textsc{SPSI Property 4.} (\textit{No Dependencies from Aborted Transactions}) A transaction can only be final committed if it does not depend on a speculatively committed or aborted transaction.
 \end{itemize}
 
-SPSI Property 1 extends the notion of snapshot, at the basis of the SI definition, to include among the set of  transactions visible to a transaction $T$ originated on a node S at time $t$ all the transactions that have also originated on $S$ and that were speculatively committed by time $T$. Notice that this guarantee applies to all transactions, including those that have to be eventually aborted due to conflicts with either local or remote transactions. This property provides the illusion that a transaction $T$ executes on an immutable snapshot, which reflects the execution of all the transactions speculatively committed before $T$'s activation, and originated on the same local node. These include not only the transactions originated by the same client and speculatively committed before activating the current transaction --- from which we say that the current transaction has developed a \textit{flow dependence} - but also transactions from which the current transaction may have already have developed a \textit{data dependence} by observing their speculatively committed versions during one of of its previous read operations. 
+SPSI Property 1 extends the notion of snapshot, at the basis of the SI definition, to include among the set of  transactions visible to a transaction $T$ originated on a node S at time $t$ all the transactions that have also originated on $S$ and that were speculatively committed by time $T$. Notice that this guarantee applies to all transactions, including those that have to be eventually aborted due to conflicts with either local or remote transactions. This property provides the illusion that a transaction $T$ executes on an immutable snapshot, which reflects the execution of all the transactions speculatively committed before $T$'s activation, and originated on the same local node. 
 
 SPSI Property 2 coincides with SI's property 2, ensuring the same semantics regarding the absence of write-write conflicts among concurrent final committed transactions. SPSI Property 3 expresses analogous guarantees for speculatively committed transactions, although with a relevant difference: such guarantees are restricted only to pairs of transactions that are originated at the same node. It is worth highlighting that the choice of restricting, in SPSI Properties 1 and 3, the guarantees regarding speculative committed versions only to transactions originated at the same site is fundamental to allow implementing efficient schemes that can decide whether to speculative commit a transaction based solely on local knowledge (i.e., avoiding expensive remote certification phases).
 
-Finally, SPSI Property 4 ensures that a transaction can be final committed only if it does not have any dependence on transactions that are not, in their turn, final committed --- which guarantees that all possible causal dependencies (i.e., flow and data dependences) that a transaction may have developed are towards transactions whose outcome is not or can never become an abort.
+Finally, SPSI Property 4 ensures that a transaction can be final committed only if it does not have any \textit{dependence} on transactions that are not, in their turn, final committed.
+We distinguish two types of dependencies: \textit{flow dependencies} and \textit{data dependencies}. Flow dependencies  between two transactions T and T' are developed whenever a given client activates T' after having speculatively committed T and are only removed when the final outcome (i.e., commit/abort) for T is determined. This allows to capture  causal dependencies that arise when a client activates a new transactions on the basis of the results produced by any speculatively committed transaction that was previously activated by the same user. For instance, a flow dependence is established if a user decides to activate a hotel booking reservation after having observed the speculative commit of a fight reservation: in case the flight reservation transaction is eventually rolled back, SPSI forces to abort also the hotel booking transaction. We say that transaction T has a data dependence on transaction T' if T speculatively reads data pre-committed by T'. 
+Overall, SPSI Property 4  guarantees that whenever a transaction final commits, it can not causally depend on any  transaction whose outcome is not determined yet, and may hence eventually abort.
 
 Overall, SPSI Properties 1, 3 and 4 greatly restrict the spectrum of anomalies that can be experienced by speculatively committed transactions, by limiting them to conflicts developed with concurrent transactions originated at remote sites. More formally, those properties ensure that applications that expose/observe speculative states always produce/execute on snapshots  that are correct if one applies the SI criterion to the transaction history comprising the transactions which were known to the node in which such applications executed at the time in which they started executing a transaction. 
 
