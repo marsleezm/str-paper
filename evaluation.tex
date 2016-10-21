@@ -1,7 +1,8 @@
 
 \section{Evaluation}
 \label{sec:evaluation}
-We deployed \specula over nine geo-distributed datacenters of Amazon EC2 and evaluated it using both synthetic workloads and realistic benchmarks, namely TPC-C and RUBiS. We report the performance achievable by \specula when using exclusively internal speculation, i.e., speculative reads, and when enabling also external speculation, in which case speculative commits are immediately externalized to clients. In the following, we call the first variant of \specula as  {\specula}-Internal, and to the second one {\specula}-External. This choice allows us to contrast the performance achievable by \specula when speculation is used in a fully transparent way for the application, with the case in which programmers are willing to incur the risk of exposing mispeculations to clients and to develop compensation logic to cope with these scenarios.
+This section evaluates the % performance of \specula when deployed over We deployed \specula over nine geo-distributed datacenters (DCs) of Amazon EC2 and evaluated it using both synthetic workloads and realistic benchmarks, namely TPC-C and RUBiS. We report the 
+ performance achievable by \specula when using exclusively internal speculation, i.e., speculative reads, and when enabling also external speculation, in which case speculative commits are immediately externalized to clients. In the following, we refer to the first \specula's variant as to  {\specula}-Internal, and to the second one as {\specula}-External. This choice allows us to contrast the performance achievable by \specula when speculation is used in a fully transparent way for the application, with the case in which programmers are willing to incur the risk of exposing mispeculations to clients.% and to develop compensation logic to cope with them.
 
 %Recall that the use of external speculation  allows us to evaluate the performance achievable 
 %
@@ -23,9 +24,9 @@ We use two baseline protocols. The first one employs ClockSI~\cite{clocksi}, a n
 \label{subsec:setup}
 We implemented our baseline protocol and \specula in  Erlang, based on \textit{antidote}, a popular open-source platform for evaluating distributed consistency protocols \cite{antidote}.
 
-The system is deployed across the following nine datacenters of Amazon EC2: Ireland(IE), Seoul(SU), Sydney(SY), Oregon(OR), Singapore(SG), North California(CA), Frankfurt(FR), \\ Tokyo(TY) and North Virginia(VA). Each datacenter consists of three m4.large instances (2 VCPU and 8 GB of memory) and each instance holds the master replica of one partition. All DCs form a consistent hashing ring arranged according to the order of the above list; each partition is replicated across the five datacenters that follow the datacenter hosting the master replica of that partition, e.g., 
+The system is deployed across the following nine DCs of Amazon EC2: Ireland(IE), Seoul(SU), Sydney(SY), Oregon(OR), Singapore(SG), North California(CA), Frankfurt(FR),  Tokyo(TY) and North Virginia(VA). Each DC consists of three m4.large instances (2 VCPU and 8 GB of memory) and each instance holds the master replica of one partition.  DCs are arranged in a consistent hashing ring according to the order of the above list; each partition is replicated across the five DCs that follow the DCs hosting the master replica of that partition, e.g., 
  the  partitions whose primary replicas are maintained at the CA datacenter are replicated by the 
- FR, TY, VA, IE and SU data centers. Table~\ref{tab:latency} reports the largest network latencies incurred at the various data centers to contact one of its replicas and any other data center in the cluster.
+ FR, TY, VA, IE and SU DCs. %Table~\ref{tab:latency} reports the largest network latencies incurred at the various data centers to contact one of its replicas and any other data center in the cluster.
  
 %  We interleave DCs from nearby regions in the consistent hash ring, so to reduce the variance in the replication  latencies incurred by different  data centers.
  
@@ -35,18 +36,18 @@ A workload stressor is located at each node of the system, which spawns one thre
 
 %duration from its first trial to its commit time, and the user perceived latency (for speculative commit) is measured as the duration from its first trial to its last speculative commit (after which it commits). Last but not least, each experiment is run for three times. We discard the aggregate results of the first twenty seconds and show the average value (deviation is low).
 
-\begin{table*}
-\small
-\begin{center}
-  \begin{tabular}{l |  l | l | l| l | l | l| l| l |l } 
-     & IE & SU& SY& OR & SG & CA &  FR & TY & VA  \\ \hline
-  \textbf{Max latency (replicas)} & 334(SG) & 267(FR) & 321(FR) & 160(SG)  & 337(IE) & 167(FR) & 321(SY)& 212(IE)  &  226(SY)  \\   \hline
-  \textbf{Max latency (all)} &  334(SG) &  267(FR) & 321(FR)  & 163(SY) & 337(IE) & 175(SG) & 324(SG)  & 233(FR)  & 226(SY) \\ \hline
-  \end{tabular}
-\end{center}
-\caption{Largest network latency experienced, on average, by a DC to contact any of its  replicas and any other DC (msec).}
-\label{tab:latency}
-\end{table*}
+%\begin{table*}
+%\small
+%\begin{center}
+%  \begin{tabular}{l |  l | l | l| l | l | l| l| l |l } 
+%     & IE & SU& SY& OR & SG & CA &  FR & TY & VA  \\ \hline
+%  \textbf{Max latency (replicas)} & 334(SG) & 267(FR) & 321(FR) & 160(SG)  & 337(IE) & 167(FR) & 321(SY)& 212(IE)  &  226(SY)  \\   \hline
+%  \textbf{Max latency (all)} &  334(SG) &  267(FR) & 321(FR)  & 163(SY) & 337(IE) & 175(SG) & 324(SG)  & 233(FR)  & 226(SY) \\ \hline
+%  \end{tabular}
+%\end{center}
+%\caption{Largest network latency experienced, on average, by a DC to contact any of its  replicas and any other DC (msec).}
+%\label{tab:latency}
+%\end{table*}
 
 \subsection{Synthetic workloads}
 We start by considering a synthetic benchmark, which allow us to to evaluate \specula's performance in presence of workloads with precisely identifiable and very heterogeneous characteristics.The synthetic benchmark generates transactions with null ``think time'', i.e., client threads issue a new transaction as soon as the previous one is final committed, for ClockSI-REP and {\specula}-Internal, or speculatively committed, for {\specula}-External and PLANET. As such, this benchmark is representative of non-interactive applications, in which transactions are used to support machine-to-machine interactions. (like, e.g., in high frequency trading applications).

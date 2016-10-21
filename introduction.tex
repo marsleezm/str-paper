@@ -4,7 +4,7 @@
 
 Modern online services are increasingly deployed in multiple geographically-scattered datacenters (geo-replication)~\cite{spanner, kraska2013mdcc, li2012making}. Geo-replication allows services to remain available even in the presence of outages affecting entire data centers  and it reduces access latency by bringing data closer to clients. On the down side, though, the performance of geographically distributed data stores is challenged by the existence of unavoidably large communication delays between datacenters: two datacenters on opposite sides of the earth incur a minimal latency of 133ms, which is utterly bounded by the speed of light and can not be further reduced~\cite{bailis2013highly}. 
 
-The inherently large synchronization overheads that affect geo-replicated data stores has a deep impact on the performance of the protocols employed to enforce data consistency. The problem is particularly exacerbated in  data-stores that i) support partial replication, and ii) ensure strong consistency semantics via ACID transactions --- two features that are recognized as highly desirable to enhance system's scalability~\cite{bettina-partial} and simplify applications' development~\cite{shute2013f1}, respectively. 
+The inherently large synchronization overheads that affect geo-distributed data stores has a deep impact on the performance of the data replication protocols. The problem is particularly exacerbated in  data-stores that i) support partial replication, and ii) ensure strong consistency semantics via ACID transactions --- two features that are recognized as highly desirable to enhance system's scalability~\cite{bettina-partial} and simplify applications' development~\cite{shute2013f1}, respectively. 
 
 For this class of systems, some form of global synchronization, typically based on a Two-Phase commit scheme~\cite{bernstein1987concurrency}, is unavoidable in order to safely detect conflicts developed among  concurrent transactions executing at different data-centers. The adverse impact on performance of inter-data center synchronization is of a twofold nature: i) system's throughput can be severely impaired, as  transactions need to hold pre-commit locks during their global validation phase, which can cripple the effective concurrency that these systems can achieve; ii) client-perceived latency is also directly affected, since the inter-data-center  synchronization phase lies in the critical path of execution of transactions.
 
@@ -64,15 +64,6 @@ observing non-atomic snapshots that reflect only partially the updates produced 
 \vspace{-5mm}
 \end{figure}
 
-\begin{figure}[t!]
-\centering
-\hspace{-5mm}
-\includegraphics[scale = 0.24]{figures/example2.pdf}
-\vspace{-5mm}
-\caption{\footnotesize Isolation violation --- T3 observes the updates of two conflicting transactions, namely T1 and T2.}
-\label{fig:ex2}
-\vspace{-5mm}
-\end{figure}
 
 Figures~\ref{fig:ex1} and~\ref{fig:ex2} illustrate two examples of concurrency anomalies that can arise in a transactional system that adopts speculative reads. In Figure~\ref{fig:ex1}, the atomicity of transaction T1 is violated, as transaction T2 observes only partially T1's updates, i.e., it speculatively reads the version of X produced by T1 but misses T1's updates on Y. Figure~\ref{fig:ex2} illustrates a violation of the isolation properties ensured by SI, since T3 reads speculatively the versions of data items X and Y  produced by two transactions, i.e., T1 and T2, which conflict on X and cannot, hence, be both committed. This type of anomalies can be quite hard to predict or reason about, as they can manifest as subtle concurrency bugs that can lead to anomalous system states, e.g., divisions by zero or infinite cycles~\cite{guerraoui2007opacity}, and compromise the safety of user level applications, e.g., by crashing them.
 
@@ -88,18 +79,27 @@ We tackle the first of the above challenges by introducing a novel consistency m
 In a nutshell, SPSI guarantees that the snapshots that can be observed/speculatively committed by a transaction T originated at a node \textit{n}
  are equivalent to the ones that T would have observed/committed, had it been executed by a non-speculative SI data store along with all the transactions existing in the system, with the exception of any speculatively committed transaction originated at a different node $n'\neq n$. Unlike SI, though, SPSI allows a transaction T to include, in its snapshot to observe, the data item versions produced by transactions that speculatively committed before T started.
  
+\begin{figure}[t!]
+\centering
+\hspace{-5mm}
+\includegraphics[scale = 0.24]{figures/example2.pdf}
+\vspace{-5mm}
+\caption{\footnotesize Isolation violation --- T3 observes the updates of two conflicting transactions, namely T1 and T2.}
+\label{fig:ex2}
+\vspace{-5mm}
+\end{figure}
 SPSI  spares programmers from complex concurrency bugs, by ensuring that  transactions always execute on snapshots that are atomic and isolated, although not capturing the effects of concurrent, speculatively committed remote transactions. Further, by demanding that the snapshots over which transactions execute reflect \textit{only} the effects of locally activated concurrent transactions, SPSI's specification allows for efficient implementations that can decide whether it is safe to speculatively commit a transaction solely on the basis of local information.
 
 
 SPSI represents the theoretical foundations over which we build \specula (Speculative Transactional Replication). The protocol employed by \specula  shares several key design choices with state-of-the-art strongly consistent data stores~\cite{spanner,clocksi,peluso2012score}, which contribute to its efficiency and scalability. These include:  multi-versioning, which maximizes efficiency in read-dominated workloads~\cite{bernstein1987concurrency},  purely decentralized concurrency control based on distributed clocks~\cite{spanner,clocksi,peluso2012scalability}, as well as support for partial replication. 
 
 However, unlike conventional transactional protocols, \specula supports both 
-the speculative read and speculative commit mechanisms. As we will show via an extensive experimental study, \specula's design choice of allowing speculative read can lead to increase throughput by up to XX$\times$ and reduce latency by up to YY$\times$. Such gains can be achieved in a fully transparent way for programmers, allowing applications designed to run on a SI-compliant data store to run unmodified on \specula.
+the speculative read and speculative commit mechanisms. As we will show via an extensive experimental study, \specula's design choice of allowing speculative read can lead to increase throughput by up to 3.47$\times$ and reduce latency by up to 10$\times$. Such gains can be achieved in a fully transparent way for programmers, allowing applications designed to run on a SI-compliant data store to run unmodified on \specula.
 
-Applications that exploit \specula's speculative commit mechanism can reduce the client-perceived latency by up to an additional XX\% factor. By reducing the execution latency of transactions,  speculative commits also allow for enhancing the throughput achievable by \specula by up to XX$\times$ in machine-to-machine applications in which the rate of submission of new transactions is solely throttled by the speed at which the system can process previously submitted transactions. As the usage of speculative commits allow mispeculations to surface and be exposed to clients, applications that use this mechanism do have to be equipped with compensation logic to handle scenarios in which speculatively committed transactions' have to be eventually aborted.  Yet, \specula's programming model allows developers to use speculative commits selectively, i.e., on a subset of the application's transactions. This allows programmers to extend their applications, in an incremental and modular fashion, and/or to focus only on  transactions that have a critical impact on user-perceived latency.
+Applications that exploit \specula's speculative commit mechanism can further reduce the client-perceived latency. By reducing the execution latency of transactions,  speculative commits also allow for enhancing the throughput achievable by \specula by up to 4$\times$ in machine-to-machine applications in which the rate of submission of new transactions is solely throttled by the speed at which the system can process previously submitted transactions. As the usage of speculative commits allow mispeculations to surface and be exposed to clients, applications that use this mechanism do have to be equipped with compensation logic to handle scenarios in which speculatively committed transactions' have to be eventually aborted.  Yet, \specula's programming model allows developers to use speculative commits selectively, i.e., on a subset of the application's transactions. This allows programmers to extend their applications, in an incremental and modular fashion, and/or to focus only on  transactions that have a critical impact on user-perceived latency.
 
 Finally, in order to achieve performance robustness, \specula integrates a lightweight, yet effective, hill climbing-based self-tuning  mechanism that dynamically adjusts the aggressiveness of the speculative mechanisms employed by the system based on the workload characteristics. Not only self-tuning allows \specula to remain competitive in challenging scenarios that are unfavourable to the use of speculative techniques. It also allows to automatically identify which configurations maximize the performance gains achievable via speculation in favourable workloads, sparing the complexity of manually tuning any additional system's knobs.
 
-The remainder of this paper is structured as follows. {\bf TODO}
+%The remainder of this paper is structured as follows. {\bf TODO}
 
 
