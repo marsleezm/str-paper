@@ -11,93 +11,95 @@ For this class of systems, in fact, some form of global synchronization, typical
 
 %This has motivated the investigation of a broad spectrum of data replication protocols for geo-replicated systems~\cite{xxx} as well as the exploration of diverse trade-off regarding the  consistency semantics offered to application developers~\cite{xxx}.
 
-This work investigates the opportunities and challenges associated with the use of \textit{speculative} processing techniques in geo-distributed partially replicated transactional data stores  that provide a widely employed consistency criterion, i.e., Snapshot Isolation~\cite{xxx}. Generally speaking, speculative transactional processing techniques avoid to block transaction processing in presence of potential conflicts with concurrent transactions that would otherwise impose to wait for the completion of an inter-replica synchronization phase. Conversely, an optimistic assumption is made on how  such conflicts will be eventually resolved: if the assumption turns out to be correct, performance will benefit; else, in presence of a \textit{mispeculation}, the transaction has to undergo an abort.
+This work investigates the opportunities and challenges associated with the use of \textit{speculative} processing techniques in geo-distributed partially replicated transactional data stores  that provide a widely employed consistency criterion, i.e., Snapshot Isolation~\cite{xxx}.
+In particular we focus on two speculative transaction processing mechanisms: \textit{speculative reads} and \textit{speculative commits}.
 
-We distinguish between two classes of speculative transaction processing techniques, which we call \textit{internal} and \textit{external} speculation,  depending on whether the effects of mispeculation are transparent or not for the programmers. Optimistic concurrency control~\cite{xxx} represents an instance of internal speculation. Conversely, asynchronous replication schemes~\cite{eventuallyconsistenttransactions} can be seen as an example of external speculation, as it requires programmers to develop compensation logic to cope with scenarios in which transactions have to be aborted \textit{after} their results have been already externalized.
+ %Generally speaking, speculative transactional processing techniques avoid to block transaction processing in presence of potential conflicts with concurrent transactions that would otherwise impose to wait for the completion of an inter-replica synchronization phase. Conversely, an optimistic assumption is made on how  such conflicts will be eventually resolved: if the assumption turns out to be correct, performance will benefit; else, in presence of a \textit{mispeculation}, the transaction has to undergo an abort.
 
-In this paper we study how  to enhance performance of geo-distributed transactional data stores via two speculative techniques: \textit{speculative reads} and \textit{speculative commits}.
+%We distinguish between two classes of speculative transaction processing techniques, which we call \textit{internal} and \textit{external} speculation,  depending on whether the effects of mispeculation are transparent or not for the programmers. Optimistic concurrency control~\cite{xxx} represents an instance of internal speculation. Conversely, asynchronous replication schemes~\cite{eventuallyconsistenttransactions} can be seen as an example of external speculation, as it requires programmers to develop compensation logic to cope with scenarios in which transactions have to be aborted \textit{after} their results have been already externalized.
 
-Speculative reads  allow a transaction T to immediately observe the  data item versions produced by a pre-committed transaction T', instead of blocking T until the outcome (abort/commit) of T' has been determined. Speculative reads are based on the optimistic assumption that pre-committed transactions will eventually be committed and belong to the class of internal speculation techniques, since  mispeculations can be managed fully transparently to the programmer by simply restarting T in case T' is aborted.
+%In this paper we study how  to enhance performance of geo-distributed transactional data stores via two speculative techniques: \textit{speculative reads} and \textit{speculative commits}.
+
+Speculative reads  allow a transaction T to immediately observe the  data item versions produced by a pre-committed transaction T', instead of blocking T until the outcome (abort/commit) of T' has been determined or forcing T to read the pre-image of T'. Speculative reads are based on the optimistic assumption that pre-committed transactions will eventually be committed. % and, since  mispeculations can be managed fully transparently to the programmer by simply restarting T in case T' is aborted.
+%
+%
+ Speculative commits, instead, allow for optimistically exposing the results produced by a transaction that is still undergoing its global synchronization phase, based on the assumption that it will be eventually committed, i.e., no conflicts with remote transactions will be detected.
+
+As we will  show via an extensive experimental study, both speculative reads and speculative commits can grant significant performance advantages in geo-distributed transactional data stores in case the optimistic assumptions on which they rely are met. On the one hand, speculative commits can remove the global synchronization phase from the critical path of transaction execution, which normally plays a dominant role in the user perceived latency; 
+on the other hand, speculative reads can significantly reduce the ''effective´´ duration of pre-commit locks (i.e., as perceived by conflicting transactions). Not only this reduces the transaction execution time, but also enhances the maximum degree of parallelism achievable by the system --- and, hence, throughput.
+
+However, the employment of these speculative techniques raises two non-trivial challenges:
+
+\vspace{4pt}\noindent {\bf Concurrency anomalies.} Unless properly designed and coupled with the underlying distributed concurrency control scheme, speculative transaction processing techniques can expose transactions to new types of concurrency anomalies, such as 
+observing non-atomic snapshots that reflect only partially the updates produced by concurrent transactions, or non-isolated snapshots that encompass the updates produced by conflicting transactions. 
 
 
-Speculative commits are instead an external speculative technique that allows for optimistically exposing the results produced by a transaction that this is still undergoing its global synchronization phase, under the assumption that no conflicts with remote transactions will be detected.
+%\begin{figure}
+%\centering
+%\begin{minipage}{.48\textwidth}
+%\hspace{-5mm}
+%\centering
+%\includegraphics[scale = 0.24]{figures/example1.pdf}
+%\caption{\footnotesize Atomicity violation --- T2 observes partially the updates of T1 (on data item X, but not on Y).}
+%\label{fig:ex1}
+%\end{minipage}\\
+%\begin{minipage}{.48\textwidth}
+%\hspace{-5mm}
+%\centering
+%\includegraphics[scale = 0.24]{figures/example2.pdf}
+%\caption{\footnotesize Isolation violation --- T3 observes the updates of two conflicting transactions, namely T1 and T2.}
+%\label{fig:ex2}
+%\end{minipage}
+%\caption{\footnotesize Examples of concurrency anomalies that may arise when adopting speculative techniques that are prevented by the SPSI criterion.}
+%\label{fig:example}
+%\end{figure}
 
-As we will also show via an extensive experimental study, both speculative reads and speculative commits can grant significant performance advantages in geo-distributed transactional data stores in case the optimistic assumptions on which they rely are met. Speculative commits can remove the global synchronization phase from the critical path of transaction execution, which normally a dominant role in the user perceived latency; 
- speculative reads can significantly reduce the ''effective´´ duration of pre-commit locks (i.e., as perceived by conflicting transactions), which not only reduces the transaction execution time but also enhances the maximum degree of parallelism achievable by the system --- and, hence, throughput.
-
-However, the employment of these speculative techniques also raises two non-trivial challenges:
-\begin{itemize}
-\item Unless properly designed and intergrated in the underlying distributed concurrency control scheme, speculative transaction processing techniques may expose transactions to concurrency anomalies that would not otherwise arise and that would represent a source of additional complexity for application developers.
-\item Speculation can hamper performance in adverse scenarios, where mispeculation occur excessively frequently. Also, the mechanisms employed to support speculation need to be extremely lightweight in order to minimize their overheads that may, otherwise, shadow or outweigh the theoretical performance gains that they may achieve.
-\end{itemize}
-
-{\bf reviewed up to here}
-
-Data stores that embrace strongly consistent semantics, like Scatter~\cite{scatter} and Google's Spanner~\cite{spanner} are reckoned~\cite{shute2012f1} to greatly reduce the complexity of building distributed applications by providing programmers with the powerful abstraction of ACID transactions. However, it is also well known~\cite{brewer2012cap}  that enforcing strong-consistency requires introducing the latency of several inter-datacenter network round trips along the critical path of transactions' execution. This has not only a direct impact on the user-perceived latency --- a key discrimination factor for online services and a potential cause of large revenue losses  \cite{schurman2009user}, but also on throughput. In fact, throughout the execution of the replica synchronization protocol --- typically based on a Two-phase commit scheme~\cite{spanner,peluso2012score} --- existing strongly consistent data stores maintain, so called, pre-commit locks on the data items accessed by transactions. The duration of these locks, in geo-distributed data stores, can easily last on the order of a few hundreds of milliseconds. As a consequence, in workloads that generate non-minimal data contention, the probability of incurring lock convoying effects is greatly amplified, which can severely hinder the maximum throughput the system can withstand.
-
-In order to tackle this problem, several systems have resorted to use weak consistency models, such as eventual consistency~\cite{kawell1988replicated, lloyd2011don, cure}, which allow to propagate transactions (or even individual operations, in case transactions are not supported) asynchronously. This brings remarkable benefits in terms of user-perceived latency and achievable throughput. These benefits, though, come at the cost of a significant increase of complexity for the application developers, who have to take responsibility of enforcing application's correctness in spite of a broad range of subtle concurrency anomalies~\cite{shute2012f1}. This includes developing compensation logic for transactions whose output has been externalized, in a speculative fashion, without waiting for the completion of the global certification phase: e.g., in an e-commerce application, handling the scenario in which a purchase order has to be eventually rejected or emended because the last stock of some requested item has been attributed to a concurrent transaction. Moreover, weak consistency models also require programmers to ensure that the application's logic does not break when transactions observe non-atomic snapshots that reflect only partially the effects of concurrent transactions or non-isolated snapshots that reflect the effects of conflicting transactions. This type of anomalies can be quite hard to predict or reason about, as they manifest as subtle concurrency bugs that can lead to anomalous system states, e.g., divisions by zero or infinite cycles~\cite{guerraoui2007opacity}, that may compromise the safety of user level applications, e.g., crashing them, and from which it is typically impossible to recover using business-level compensation logic.
-\iffalse
-In order to tackle this problem, in the literature various trade-offs have been explored between programming complexity and system performance by weakening the consistency semantics provided to programmers. some systems totally remove cross-site synchronous operations~\cite{kawell1988replicated, lloyd2011don, cure}; some reveals preliminary results to users to reduce latency, before operations finish execution~\cite{planet, icg}, and some systems that mix multiple consistency levels to reduce the latency of commutative operations~\cite{redblue, PSI}. Weakening system consistency brings remarkable benefits in terms of user-perceived latency and achievable throughput. These benefits, though, come at the cost of a significant increase of complexity for the application developers, including dealing with subtle concurrent anomalies, analyzing applications and writing compensation logics to emend the side-effect of externalized speculative results. 
-\fi
-
-%caused by observing data snapshots not producible by any sequential execution of transactions
-\begin{figure}
+\begin{figure}[t!]
 \centering
-\includegraphics[scale = 0.24]{figures/example.pdf}
-\caption{\footnotesize Example concurrency anomaly that may arise when adopting weak-consistency models that do not abide by the SPSI criterion.}
-\label{fig:example}
+\hspace{-5mm}
+\includegraphics[scale = 0.24]{figures/example1.pdf}
+\caption{\footnotesize Atomicity violation --- T2 observes partially the updates of T1 (on data item X, but not on Y).}
+\label{fig:ex1}
 \end{figure}
 
-The system proposed in this paper, which we called \specula (Speculative Transactional Replication), provides developers with the flexibility of choosing between two different consistency semantics for the transactions that compose their applications: a strong consistency semantics, i.e., the familiar Snapshot Isolation~\cite{berenson1995critique}, and a weakly consistent one, which we termed Speculative Snapshot Isolation (SPSI). The idea of unifying different consistency models within the same programming model is not new: two notable examples are the red-blue consistency model recently proposed in Gemini~\cite{li2012making} and the support in SQL for specifying different isolation levels on a per transaction basis~\cite{sqk}.  The main innovative aspect of \specula lies in its novel transactional replication protocol, which provides unique advantages with respect to state of the art systems that provide either strong or weak consistency semantics (or both).
+\begin{figure}[t!]
+\centering
+\hspace{-5mm}
+\includegraphics[scale = 0.24]{figures/example2.pdf}
+\caption{\footnotesize Isolation violation --- T3 observes the updates of two conflicting transactions, namely T1 and T2.}
+\label{fig:ex2}
+\end{figure}
 
-~\\
-\noindent {\bf Strong consistency semantics:} 
-\iffalse
-The protocol employed by \specula to ensure strong consistency shares several key design choices with state-of-the-art data stores~\cite{spanner,clock-si,PelusoScore}, which contribute to its efficiency and scalability. These include:  multi-versioning, which maximizes efficiency in read-dominated workloads~\cite{bernstein-book},  distributed clocks, which are used to establish the transaction serialization order in a fully decentralized fashion,~\cite{spanner} as well as support for partial replication, a  feature that is generally regarded as fundamental to achieve high scalability~\cite{kemmeAndRicardo,PelusoGMU}. 
-\fi
-\specula supports transactions with strong consistency semantics, i.e. Snapshot Isolation, which provides programmers the familiar ACID properties. However, comparing with conventional transactional protocols, \specula takes a radically different approach regarding the management of transactional conflicts involving pre-committed data. Existing strong-consistent protocols take a conservative approach, which prevents any transaction T from ever observing the data item versions pre-committed by a different transaction T' --- either by blocking T till T' commits, or by letting T observe the pre-image of the execution of T'. This choice is arguably motivated by the fact that allowing transactions to observe pre-committed data item versions exposes them to the risk of cascading aborts~\cite{xxx}, a property that is ``historically'' deemed as crucial to maximize the efficiency of a transactional system~\cite{textbooks-on-db}. \specula departs from these conventional designs, and embraces a speculative approach that spares transactions that incur a conflict on pre-committed data from having to wait for the finalization of the commit phase of the lock-holding transaction. Conversely, \specula's distributed concurrency control mechanism takes an optimistic approach, i.e., it speculates on the eventual success (i.e., commit) of pre-committed transactions and allows the data versions pre-committed by a transaction T to be read by concurrent transactions, that are hence speculatively serialized after T. As we will show via an extensive experimental study, \specula's design choice of allowing speculative read can lead to increase throughput by up to XX$\times$ and reduce latency by up to YY$\times$. A striking, and more general, result stemming from our work is that, in strongly consistent geo-replicated data stores, the advantages stemming from accepting the risk of cascading aborts largely outweighs its drawbacks, leading to remarkable gains in terms of both throughput and latency.
+Figures~\ref{fig:ex1} and~\ref{fig:ex2} illustrate two examples of concurrency anomalies that can arise in a transactional system that adopts speculative reads. In Figure~\ref{fig:ex1}, the atomicity of transaction T1 is violated, as transaction T2 observes only partially T1's updates, i.e., it speculatively reads the version of X produced by T1 but misses T1's updates on Y. Figure~\ref{fig:ex2} illustrates a violation of the isolation properties ensured by SI, since T3 reads speculatively the versions of data items X and Y  produced by two transactions, i.e., T1 and T2, which conflict on X and cannot, hence, be both committed. This type of anomalies can be quite hard to predict or reason about, as they can manifest as subtle concurrency bugs that can lead to anomalous system states, e.g., divisions by zero or infinite cycles~\cite{guerraoui2007opacity}, and compromise the safety of user level applications, e.g., by crashing them.
 
-~\\
-\noindent {\bf Weak consistency semantics:} Analogously to the well-known eventual consistency model~\cite{brewer2012cap}, the weak consistency model supported by \specula, i.e., SPSI, allows application developers to \textit{speculative commit} transactions, i.e., to externalize to its users (e.g., human operators) the results of a transaction while this is still undergoing its final commit/certification phase. As such, when programmers choose to exploit the speculative commit capabilities of \specula, they also need to develop compensation logic for coping with the case in which a speculatively committed transaction has to be eventually aborted.
+\vspace{4pt}\noindent {\bf Performance robustness.} If used injudiciously, speculation can actually hamper, instead of benefiting performance. As we will show, in adverse scenarios  --- e.g., large likelihood of transaction aborts and high system load --- the additional costs associated with mispeculations can significantly penalize both user perceived latency and the maximum throughput achievable by the system.
 
-What distinguishes SPSI from existing weak consistency models is that it provides clear and stringent guarantees on the atomicity and isolation of the snapshots observed and produced during transactions' execution. Figure~\ref{fig:example} illustrates one of possible concurrency anomalies that can arise in a transactional system that adopts weak consistency, by exposing the data item versions produced by speculatively committed transactions: transaction T3 observes the version of data item X precommitted by a concurrent transaction, T2, on node n$_1$. However, when it comes to reading Y, which was also updated by T2, T3 misses the version created by T2 on node n$_3$ (as T2's updates are still being propagated to node \textit{n$_2$}). Such concurrency anomalies are prevented by the SPSI specification, which, in a nutshell, guarantees that the snapshots that can be observed/speculatively committed by a transaction T originated at a node \textit{n}
-%
-% observable by \textit{any} transaction (independently of whether they ) and those that are produced by a speculatively committed transaction T 
-% 
- are equivalent to the ones that would have been observed/committed by T, had it been executed by a non-speculative SI data store along with a subset of all the transactions existing in the system, which excludes any concurrent, speculatively committed transaction originated at a node $n'\neq n$.
-% 
-% 
-%  
-% 
-%  processed a subset of the entire set of transactions existing in the system that does include specu which comprises all the transactions that, by the time T started,  i) had either finalized their commit phase or ii) were activated on the same node that originated T and had speculatively committed.
- On the one hand,  SPSI  spares programmers from complex concurrency bugs, by ensuring that  transactions always execute on snapshots that are atomic and isolated, although not capturing the effects of concurrent, speculatively committed remote transactions. On the other hand, by demanding that the snapshots over which transactions execute reflect \textit{only} the effects of locally activated concurrent transactions, SPSI's specification allows for efficient implementations that can decide whether it is safe to speculatively commit a transaction solely on the basis of local information.
+Further, in order to maximize the benefits attainable in favourable workload settings, it is essential that the mechanisms employed to support speculation are very lightweight and efficient. Else, the overheads they impose may shadow or even outweigh the performance gains effectively achievable using speculative techniques.
 
-%, as illustrated in the example execution in Figure~\ref{example}, and ii) it makes transactions subject to cascading-aborts~\cite{xxx}, a property that is ``historically'' deemed as important for the efficiency of a transactional system. \specula rules out the former risk, thanks to an innovative, fully distributed, multi-versioned concurrency control scheme
-%
-%such data item to be ever observed, by blocking the  transaction requesting access to the data item or
-%
-%, though, departs from one of the key a
-%
-%
-%
-%Still, the latency and performance cost for guaranteeing consistency results seems indispensable. For example, logically a banking system should always be execute with strong consistency, as monetary loss caused by inconsistent operations seems unacceptable \cite{li2012making}. Interestingly, this is not always the case for systems used in daily life. Brew et al. described the design of a practical automated teller machine (ATM): when an ATM experiences network partition, it indeed takes the risk of overdrafting accounts to allows withdrawal unilaterally. In fact, ATM's ability to dispense money outweighs the trouble caused by account overdraft. Accidental overdraft will be handled by a well-defined external compensation logic \cite{brewer2012cap}.
-%
-%The design of the described ATM comes from a profound insight: practical applications may not always need 100\% consistency guarantee; instead, as long as the latency and availability benefit pay off the cost of compensating occasional mistakes, they may take risks, i.e. speculate on the result of operations, instead of pessimistically waiting out uncertainty \cite{helland2009building, brewer2012cap, bailis2013eventual}. In light of this, this paper presents {\specula}, a distributed transactional key-value store that exploits speculation to circumvent the inherent large latency and low throughput of strongly-consistent transactions. The main goal of \specula is to endow application developers the flexibility to speculate transactions for latency and throughput, while keeping programming complexity in check.
-%
-%\specula consists of a programming interface and a speculative transaction protocols. The programming interface allows programmers to exert control over speculative transaction: programmers develop application with strong consistency by default, but also have the choice to specify transactions to execute in a speculative fashion, without affecting other transactions. \specula 's speculative transactional protocol enables efficient transaction processing and ensures meaningful semantics, namely SPeculative Snapshot Isolation (SPSI), to programmers. Previous research works have exploited different aspects of speculation execution \cite{kraska2009consistency, pang2014planet}: Consistency Rationing \cite{kraska2009consistency} proposes cost models to measure the best tradeoff of consistency and cost; PLANET \cite{kraska2009consistency} proposes a speculative programming interface and calculates the commit probability of transactions. However, to the best of knowledge, we are the first to propose a speculative transactional protocol for modern large-scale, fully decentralized datastore.
-% &  111 &  Haha &  Stupdi &  Noway & ahaha &   \\ \hline
 
-Overall, this paper makes three main contributions:
-~\\
-\noindent {\em 1.} We propose SPeculative Snapshot Isolation (SPSI), a consistency criterion ad hoc designed for speculative transactional systems. SPSI extends the notion of Snapshot Isolation in an intuitive way, in order to provide meaningful consistency guarantees to transactions observing speculatively committed data (\S \ref{sec:overview}, \ref{sec:protocol}).
-~\\
-\noindent {\em 2.} We present the design of \specula, a  geo-replicated data store that exploits a novel, fully-decentralized, highly scalable protocol that efficiently supports speculatively transaction execution in presence of partially-replicated data  (\S \ref{sec:protocol}).
-~\\
-\noindent {\em 3.} We conduct an extensive experimental evaluation (\S \ref{sec:evaluation}),  encompassing both complex/realistic benchmarks (TPC-C and Rubis) and synthetic micro-benchmarks that allow us to exercise a wide range of diverse workloads. The results of our study highlight that:
-\begin{itemize}
-\item \specula's innovative speculative concurrency control ensures strong consistency (SI) with  average  gains of XX\% in throughput and YY\% in latency with respect to state of the art systems, with peak gains that extend up XX$\times$ for throughput and YY$\times$ for latency. 
-\item Applications that adopt \specula's weak consistency semantics (SPSI) can reduce the user-perceived latency, on average  (i.e., considering both scenarios of successful and unsuccessful speculation), by an additional XX\% factor. Further, \specula's weak consistency semantics   allow for enhancing the throughput achievable by \specula by up to XX$\times$ in machine-to-machine applications in which the rate of submission of new transactions is solely throttled by the speed at which the system can process previously submitted transactions.
-\end{itemize}
+We tackle the first of the two above challenges by introducing a novel consistency model, which we termed Speculative Snapshot Isolation (SPSI). SPSI extends the classic Snapshot  Isolation (SI) criterion in order to provide clear and stringent guarantees on the atomicity and isolation of the snapshots observed and produced in execution histories enriched to encompass both speculative reads and speculative commits events.  %SPSI is designed to prevent the concurrency anomalies illustrated by the example in Figure~\ref{fig:example} {\bf TODO: add second example with isolation violation} while preserving the simplicity and intuitiveness of SI.  %with the ultimate goal of masking away complexity from .
+
+% Figure~\ref{fig:example} illustrates one of possible concurrency anomalies that can arise in a transactional system that adopts weak consistency, by exposing the data item versions produced by speculatively committed transactions: transaction T3 observes the version of data item X precommitted by a concurrent transaction, T2, on node n$_1$. However, when it comes to reading Y, which was also updated by T2, T3 misses the version created by T2 on node n$_3$ (as T2's updates are still being propagated to node \textit{n$_2$}).
+ 
+In a nutshell, SPSI guarantees that the snapshots that can be observed/speculatively committed by a transaction T originated at a node \textit{n}
+ are equivalent to the ones that T would have observed/committed, had it been executed by a non-speculative SI data store along with all the transactions existing in the system, with the exception of any speculatively committed transaction originated at a different node $n'\neq n$. Unlike SI, though, SPSI allows a transaction T to include, in the snapshot that it observes, the data item versions produced by transactions that speculatively committed before T started.
+ 
+SPSI  spares programmers from complex concurrency bugs, by ensuring that  transactions always execute on snapshots that are atomic and isolated, although not capturing the effects of concurrent, speculatively committed remote transactions. Further, by demanding that the snapshots over which transactions execute reflect \textit{only} the effects of locally activated concurrent transactions, SPSI's specification allows for efficient implementations that can decide whether it is safe to speculatively commit a transaction solely on the basis of local information.
+
+
+SPSI represents the theoretical foundations over which we build \specula (Speculative Transactional Replication). The protocol employed by \specula  shares several key design choices with state-of-the-art strongly consistent data stores~\cite{spanner,clock-si,PelusoScore}, which contribute to its efficiency and scalability. These include:  multi-versioning, which maximizes efficiency in read-dominated workloads~\cite{bernstein-book},  purely decentralized concurrency control based on distributed clocks~\cite{spanner,clock-SI,PelusoGMU}, as well as support for partial replication. 
+
+However, unlike conventional transactional protocols, \specula supports both 
+the speculative read and speculative commit mechanisms.
+%
+%internal, i.e., speculative reads, and external, i.e., speculative commits, speculation mechanisms. 
+
+As we will show via an extensive experimental study, \specula's design choice of allowing speculative read can lead to increase throughput by up to XX$\times$ and reduce latency by up to YY$\times$. Such gains can be achieved in a fully transparent way for programmers, allowing applications designed to operate on a SI-compliant data store to run unmodified on \specula.
+
+Applications that exploit \specula's speculative commit mechanism can reduce the client-perceived latency by up to an additional XX\% factor. By reducing the execution latency of transactions,  speculative commits also allow for enhancing the throughput achievable by \specula by up to XX$\times$ in machine-to-machine applications in which the rate of submission of new transactions is solely throttled by the speed at which the system can process previously submitted transactions. As the usage of speculative commits allow mispeculations to surface and be exposed to clients, applications that use this mechanism do have to be equipped with compensation logic to handle scenarios in which speculatively committed transactions' have to be eventually aborted.  Yet, \specula's programming model allows developers to use speculative commits selectively, i.e., on a subset of the application's transactions. This allows programmers to extend their applications, in an incremental and modular fashion, and/or to focus only on  transactions that have a critical impact on user-perceived latency.
+
+Finally, in order to achieve performance robustness, \specula integrates a lightweight, yet effective, hill climbing-based self-tuning  mechanism that dynamically adjusts the aggressiveness of the speculative mechanisms employed by the system based on the workload characteristics. Not only self-tuning allows \specula to remain competitive in challenging scenarios that are unfavourable to the use of speculative techniques. It also allows to automatically identify which configurations maximize the performance gains achievable via speculation in favourable workloads, sparing the complexity of manually tuning any additional system's knobs.
 
 The remainder of this paper is structured as follows. {\bf TODO}
+
 
