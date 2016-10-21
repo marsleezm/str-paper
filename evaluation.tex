@@ -1,22 +1,24 @@
 
 \section{Evaluation}
 \label{sec:evaluation}
-We evaluate the performance of {\specula} using Amazon's EC2. We deployed the system over geo-distributed datacenters and evaluated with three workloads: a synthetic workload, TPC-C and RUBiS. The results show that our protocol can achieve about 2$\times$ speedup for low contention workload (RUBiS) and is especially beneficial (6$\times$ speedup) for workloads with low local contention and high remote contention (a payment-dominant TPC-C workload).
+We evaluate the performance of {\specula} using Amazon's EC2. We deployed the system over geo-distributed datacenters and evaluated with three workloads: a synthetic workload, TPC-C and RUBiS. We compare two variations of our protocol, one that only performs speculative read ({\specula}-Internal) and one that can perform both speculative read and speculative commit ({\specula}-External), with two state-of-the-art protocols. The results show that even without externalizing speculative results, we can achieve about 3.5$\times$ speedup for workloads with high local contention and low remote contention. Nevertheless, allowing speculative commit can further reduce latency by XXX. \textbf{How to write latency reduction? For some workload, our final latency is 300 while the baselin is 21000, so we say by a factor or 70? What about for perceived latency?}
 
 \subsection{Protocol variations and baselines}
-We include two variations of our protocol, {\specula}-Internal and  {\specula}-External: in  {\specula}-Internal, the auto tuner can only switch between allowing speculative read or not, while it can not speculatively commit transactions;  {\specula}-External allows both speculative read and speculative commit. {\specula}-External tunes the speculation level from no speculative read (No SR), speculative read but no speculative commit (SR+SL0), SR+SL1 to SR+SL8.
- 
-We compare our protocol against two baseline protocols. The first one is based on ClockSI \cite{ClockSI}, a decentralized transactional protocol that provides Snapshot Isolation. The original ClockSI protocol does not support replication and we added a simple replication mechanism: when a master partition receives a prepare request, it synchronously replicates it to its replicas. The replicas then acknowledge to the transaction coordinator directly and the coordinator commits the transaction when it has received prepare from all involved partitions and their replicas. The protocol requires one and half WAN round-trip to commit a transaction. We name it as \textbf{ClockSI-Rep}.
+We include two variations of our protocol, {\specula}-Internal and  {\specula}-External. As their name suggests, {\specula}-Internal only allows speculative read, thus it only internally does speculation; on the other hand, {\specula}-External allows both speculative read and speculative commit, thus it can externalize speculative results to users. We run both of these protocols with an automatic tuning process. The automatic tuning process collects throughput statistics from all machines every twenty seconds \textbf{should I mention that?}, determines the next speculation level and then informs all servers. With the automatic-tuner, {\specula}-Internal can only enable or disable speculative read, while {\specula}-External starts with having no speculative read (No SR), then enabling speculative read (SR) until enabling speculative read with speculation length eight (SR+SL8). 
 
-The second baseline is designed to emulate PLANET \cite{planet}, which permits speculatively committing transaction while not allowing speculative read or pipelining speculative transactions.  The originally proposed PLANET is built on top of the MDCC protocol \cite{MDCC} and decides to speculative commit a transaction or not by a prediction model. Since it is not possible to do an apple-to-apple comparison, we emulate a simplified version of PLANET, by building it atop ClockSI-Rep and additionally allows each client to speculatively commit one transaction. 
+We compare our protocol against two baseline protocols. The first one is based on ClockSI \cite{clocksi}, a decentralized transactional protocol that provides Snapshot Isolation. The original ClockSI protocol does not support replication and we added a simple replication mechanism: when a master partition receives a prepare request, it synchronously replicates it to its replicas. The replicas then acknowledge to the transaction coordinator directly and the coordinator commits the transaction when it has received prepare from all involved partitions and their replicas. The protocol requires one and half WAN round-trip to commit a transaction. We name it as \textbf{ClockSI-Rep}.
+
+The second baseline is designed to emulate PLANET \cite{pang2014planet}, which permits speculatively committing transaction while not allowing speculative read or pipelining speculative transactions.  The originally proposed PLANET is built on top of the MDCC protocol \cite{kraska2013mdcc} and decides to speculative commit a transaction or not by a prediction model. Since it is not possible to do an apple-to-apple comparison, we emulate a simplified version of PLANET, by building it atop ClockSI-Rep and additionally allows each client to speculatively commit one transaction. 
 
 \subsection{Experimental setup}
 \label{subsec:setup}
 We implemented our baseline protocol and speculative protocol using the Erlang programming language, on top of \textit{antidote}, an open-source reference platform for evaluating distributed consistency protocols \cite{antidote}.
 
-We deployed the system in nine datacenters of Amazon EC2: Ireland(IE), Seoul(SU), Sydney(SY), Oregon(OR), Singapore(SG), North California(CA), Frankfurt(FR), Tokyo(TY) and North Virginia(VA). Each datacenter consists of three m4.large instances (2 VCPU and 8 GB of memory) and each instance holds the master replica of one partition. All DCs form a consistent hashing ring according to the order of the above list; the data of each instance is replicated by five following datacenters' corresponding servers, e.g. the data of DC CA is replicated by DCs FR, TY, VA, IE and SU. We interleave DCs from nearby regions in the hashing, so that each replication group has similar maximal latency, as shown in table \ref{tab:latency}.
+We deployed the system in nine datacenters of Amazon EC2: Ireland(IE), Seoul(SU), Sydney(SY), Oregon(OR), Singapore(SG), North California(CA), Frankfurt(FR), Tokyo(TY) and North Virginia(VA). Each datacenter consists of three m4.large instances (2 VCPU and 8 GB of memory) and each instance holds the master replica of one partition. All DCs form a consistent hashing ring according to the order of the above list; the data of each instance is replicated by five following datacenters' corresponding servers, e.g. the data of DC CA is replicated by DCs FR, TY, VA, IE and SU. We interleave DCs from nearby regions in the hash ring, so that different replication group will have similar latency to perform replication , as shown in table \ref{tab:latency}.
 
-We locate a workload stressor in each instance that issues transactions to local transaction coordinators. If a transaction is aborted, the client retries it until it gets committed. Each experiment is run for three times. We discard the aggregate results of the first twenty seconds and show the average value (deviation is low).
+We locate a workload stressor in each instance that issues transactions to local transaction coordinators. If a transaction is aborted, the client retries it until it gets committed. Therefore, the final latency of an operation is calculated as its commit time minus its first start time (as it may have been tried a few times), while perceived latency is the last time it was report as speculative commit minus its first start time.
+
+Each experiment is run for three times. We discard the aggregate results of the first twenty seconds and show the average value (deviation is low).
 
 \begin{table*}
 \small
@@ -42,7 +44,7 @@ Our evaluation starts with synthetic workloads. The synthetic workloads simulate
 \def\svgwidth{0.98\columnwidth}
 \includegraphics[scale=0.35]{figures/micro}
 \hspace{-10mm}
-\caption{\textit{Performance of different protocols under four levels of contention.} \textit{Low local, low remote} denotes low local contention and low remote contention, and so forth. For latency, solid lines denote final latency and dashed lines are the perceived latency.}
+\caption{\textit{Performance of different protocols under four levels of contention.} \textit{Low local, low remote} denotes low local contention and low remote contention, and so forth. For latency, solid lines denote operation's latency and dashed lines denote the user perceived latency.}
 \label{fig:micro_conflict}
 \end{figure*}
 
@@ -56,7 +58,7 @@ Our evaluation starts with synthetic workloads. The synthetic workloads simulate
 \label{fig:tuning}
 \end{figure}
 
-\paragraph{Performance under different contentions} In this set of experiments, we vary contention levels and system load, i.e. number of clients, to examine the performance of ClockSI-Rep, PLANET, {\specula}-Internal and {\specula}-External. As mentioned, both variations of {\specula} has an automatic tuning method. 
+\paragraph{Performance under different contentions} In this set of experiments, we vary contention levels and system load, i.e. number of clients, to examine the performance of ClockSI-Rep, PLANET, {\specula}-Internal and {\specula}-External. As mentioned, both variations of {\specula} are equipped with automatic tuning methods. 
 
 For low contention workload (\ref{fig:micro}a), both PLANET and {\specula}-External achieve good speedup, because they all allow speculatively committing transactions so clients can perform more work. Though, the key difference is that {\specula}-External supports pipelining multiple transactions, so it can achieve high throughput with much fewer clients than PLANET. The speedup reduces when the system gets more saturated. {\specula}-Internal has very little speedup, as this workload has low contention so speculative read rarely occurs. Still, {\specula}-Internal has much lower conflict rate than both ClockSI-Rep and PLANET due to the use of PreciseClock.
 
@@ -66,143 +68,38 @@ Next, we examine workloads with high remote contention, which is unfavorable for
 
 \paragraph{Automatic tuning v.s. static configurations} This experiment compares the throughput of 10 clients and 160 clients per server, using either automatic tuning or static tuning, e.g. not allowing speculative read (No SR), allowing speculative read and speculative commit with length one (SR+SL1). We picked two extreme workloads, one with low local and remote contention, and one with high contention for both. As shown in figure \ref{fig:tuning}, the levels of speculation to achieve optimal throughput vary for different numbers of clients and different contention, which is hard to predict in advance. This is indeed what we observed when experimenting different speculation levels and motivated us to design the automatic tuning method. More importantly, as can be seen in the figure, the curve of speculation level to throughput is convex, i.e. if a speculation level gives local maximal throughput, this is guaranteed to be a global maximum throughput. This observation drove us to design the automatic tuning method as a simple hill climbing algorithm \cite{hillclimbing}, which is simple and fast yet can reach throughput close to the optimal throughput (figure \ref{fig:tuning}).
 
-\iffalse
-\begin{figure}[t]
-\centering
-\begin{subfigure}[t!]{0.494\linewidth}
-\def\svgwidth{0.95\columnwidth}
-\hspace{-3mm}
-\centering \includegraphics[scale = 0.21]{figures/updatelocality}
-\caption{\footnotesize Different update locality}
-\label{fig:remote:a}
-\end{subfigure}
-\begin{subfigure}[t!]{0.494\linewidth}
-\vspace{1mm}
-\def\svgwidth{0.95\columnwidth}
-\centering \includegraphics[scale = 0.212]{figures/readlocality}%Remotereadremoteread
-\vspace{-1mm}
-\caption{\footnotesize Different read locality}
-\label{fig:remote:b}
-\end{subfigure}
-\caption{Results of the protocol with different update locality and read locality.}
-\label{fig:micro_conflict}
-\end{figure}
-
-\paragraph{Locality} In this experiment we vary update locality and read locality. Contention rate is fixed to be low for both local contention and remote contention.
-
-In the first test, we vary update locality while still keep 100\% read locality. The three numbers of each legend denote respectively the probability for a transaction to access its local master partition, local DC replicated partitions and remote DC partitions. Figure \ref{fig:remote:a} shows that lower update locality causes higher abort rate that leads to lower throughput. Figure \ref{fig:remote:b} presents the speedup of the speculative protocol compared with the baseline with different remote read probability, i.e. read locality. Intuitively, with lower read locality, a transaction takes longer time to execute before certification, so speedup should be reduced. With less than 5\% of remote read, the speculative protocol achieves similar speedup, and even when there are 50\% of remote read, we still have about 1.5$\times$ speedup.
-
-\fi
-
-\paragraph{Precise clock} 
-
 
 %Reading a key that is not replicated locally causes large latency, which makes it difficult to examine the benefit of speculation. So for most of the experiments, a transaction only accesses keys replicated in local datacenter. We dedicate a separate experiment to examine the effect of remote read on throughput.
 
 \subsection{Macro benchmark}
-In the following experiments, we evaluate the performance of \specula with realistic interactive workloads, namely TPC-C\cite{tpcc} and RUBiS \cite{rubis}. A dramatic of these workloads with the previous synthetic workloads are: (i) these interactive workloads typically assume large number of clients, and (ii) each client only occasionally issues operation, rather than injecting operation as fast as possible as in the synthetic workloads. Therefore, for these experiments we load the system with large number of clients and we apply the specified \textit{think time} between a client's operations (for TPC-C we also apply the \textit{key time}). For these workloads, we set the speculation length as four, which usually gives good speedup according to the synthetic workload.
-
-
-\begin{figure*}
-\centering
-\begin{minipage}{.73\textwidth}
-\hspace{-5mm}
-\centering
-  \includegraphics[scale=0.31]{figures/tpcc}
-  \caption{RUBiS throughput}
-  \label{fig:tpcc_result}
-\end{minipage}
-\begin{minipage}{.25\textwidth}
-\centering
-  \includegraphics[scale=0.27]{figures/rubislatencywarehouse}
-  \caption{RUBiS throughput}
-  \label{fig:rubis}
-\end{minipage}
-\end{figure*}
-
-\iffalse
-\begin{table}
-\small
-\begin{center}
-  \begin{tabular}{ l | l | l } 
-    &  \scriptsize \textbf{Read-dominant} & \scriptsize \textbf{Write-dominant} \\ \hline
-  \scriptsize \textbf{Payment-intensive} & \scriptsize 1\%, 9\%, 90\% &  \scriptsize 10\%, 80\%, 10\% \\
-    & \scriptsize  (TPC-C PR)  &  \scriptsize (TPC-C PW) \\ \hline
-  \scriptsize \textbf{New-order-intensive}  & \scriptsize 9\%, 1\%, 90\% & \scriptsize 80\%, 10\%, 10\%\\
-    & \scriptsize (TPC-C NR)  &  \scriptsize (TPC-C NW) \\ \hline
-  \end{tabular}
-\end{center}
-\caption{\textit{The ratios for new-order, payment and order-status transactions of different TPC-C workloads.} TPC-C PR means the workload is payment-intensive and read-dominant.}
-\label{tab:workload}
-\end{table}
-\fi
+In the following experiments, we evaluate the performance of \specula with realistic interactive workloads, namely TPC-C\cite{tpcc} and RUBiS \cite{rubis}. The dramatic difference between these workloads and the synthetic ones are, to model realistic human-machine interaction, these workloads specify large 'think time' between consecutive operations issued by a user, from a few seconds to tens of seconds. Therefore, we load the system with larger number of threads per server, in order to saturate the system.
 
 \subsubsection{TPC-C}
-TPC-C \cite{tpcc} models the workload of an online shopping system. We use TPC-C to examine how our speculative protocol performs under its highly skewed access. We implemented three TPC-C transactions: payment, new-order and order-status. Payment  updates the balance of a warehouse, the balance of a district from that warehouse and the balance of a customer; new-oder  updates a district and modifies the stocks for 5-15 items, and order-status is a read-only transaction. New-order  has medium local and remote conflict rate, while payment  has extremely high local contention, but very low remote contention. The locality of each transactions are as follows: new-order transactions always update local warehouses and districts, but when choosing each stock to update, it has 80\% chance to access stocks belonging to local master partition (instead of 99\%) and 20\% to access stocks belonging to local slave partitions; payment transactions update local warehouse balance and local districts balance but updates a local customer balance with 10\% probability. Overall, both types of transactions do remote certification with 90\% probability. We experiment with three workload mixes according to the specification: 5\% new-order, 83\% payment and 12\% order-status (TPC-C A); 5\% new-order, 43\% payment and 43\% order-status (TPC-C A) and 45\% new-order, 43\% payment and 12\% order-status (TPC-C C). Last but not least, we add TPC-C's think time and key time, so roughly a new-order transaction `sleeps' more than 20 seconds, while payment and order-status transactions sleep about 10 seconds.
+TPC-C \cite{tpcc} models the workload of an online shopping system. We implemented three TPC-C transactions, namely payment, new-order and order-status, according to the specification. Payment transaction has very high local contention and low remote contention; new-order transaction has medium level local and remote contention, and order-status is a read-only transaction. According to the described workload mix rule in the specification, we come up with three workloads: 5\% new-order, 83\% payment and 12\% order-status (TPC-C A); 5\% new-order, 43\% payment and 52\% order-status (TPC-C B) and 45\% new-order, 43\% payment and 12\% order-status (TPC-C C). We add the 'think time' and 'key time' for each transaction as described in the specification, so a client sleeps for some time (from 5 seconds to as large as hundreds of seconds) both before and after issuing a transaction. In the following experiments, we load each server with five warehouses.
 
-Figure \ref{fig:tpcc:a}, \ref{fig:tpcc:b} and \ref{fig:tpcc:c} show the speedup, latency (in logarithm) and abort rate comparing \specula and the baseline, varying the total number of clients, for three workloads. As each workload contains large portion of payment transactions and payment has very high local contention, the baseline is highly contented and unable to achieve higher throughput with more loads. On the contrary, \specula is able to achieve good speedup in all workloads, especially for TPC-C A where there is very high contention, we achieve 6$\times$ speedup.
+Figure \ref{fig:tpcc}a, \ref{fig:tpcc}b and \ref{fig:tpcc}c show the throughput, latency of update transactions (in logarithm) and abort rate of ClockSI-Rep, PLANET, {\specula}-External and {\specula}-Internal. In general, due to having large think time, speculative commit hardly bring any throughput benefit, while speculative read is important due to these workloads all have high local contention. As a result, PLANET achieves the same throughput as ClockSI-Rep, {\specula}-External achieves the same throughput as {\specula}-Internal, and there is a clear throughput difference between STR and the baselines. Though, with low number of clients, for all three workloads PLANET reduces the perceived latency from about 320 millisecond to about 10 millisecond, a factor of 32. But when the load increases, the local contention is exacerbated and the latency of PLANET also increases. On the other hand, due to allowing speculative read, {\specula}-External and {\specula-Internal} achieve significant speedup compared with the baseline: 2.93$\times$ for TPC-C A, 1.68$\times$ for TPC-C B and 3.47$\times$ for TPC-C C. The latency of both {\specula} protocols also greatly reduce the operation latency by a factor of about 70 of both PLANET and ClockSI-Rep.
 
-\iffalse
+\subsection{RUBiS}
+RUBiS \cite{rubis} models an online bidding system. Of all the 26 user interactions, there are five update transactions: store bid, store buy now, store comment, register item and register user. RUBiS is designed to run on top of a SQL database, so we did the following modification to adapt it to our key-value store: (i) we horizontally partitioning database tables across servers, so that each server contains an equal portion of data of each table; (ii) many RUBiS insertion operations need to increment a table index to get unique id, which is very inefficient when the table is sharded across machines. To avoid this, we create a local table index for each data shard, as studied in \cite{cecchet2008middleware}. We use RUBiS's 15\% update default workload and its default think time (different transactions can have think time from 2 seconds to 10 seconds).
+
+Due to memory limit, we were not able to load the system with more clients. Nevertheless, the figure still shows that \specula achieves good speedup and latency reduction. With 5000 clients, \specula still achieves about 1.43$\times$ speedup compared with ClockSI-Rep and PLANET. Though, ClockSI-Rep and PLANET, STR-Internal and STR-External achieves similar throughput, due to large think time. Besides, it can be noted that the abort rate of PLANET/ClockSI-Rep even decreases with increasing number of clients. This is because in RUBiS, the access pattern of a client highly depends on the update of other clients, so with more number of clients, the access pattern gets more diverse and the abort rate is reduced.
+
+
 \begin{figure*}
 \centering
-\begin{minipage}{.32\textwidth}
-  \centering
-  \vspace{-3mm}
-  \includegraphics[scale=0.27]{figures/rubislatencywarehouse}
-  \caption{Throughput of RUBiS workloads}
-  \label{fig:rubis}
+\begin{minipage}{.72\textwidth}
+\centering
+  \includegraphics[scale=0.3]{figures/tpcc}
+  \vspace{-5mm}
+  \caption{The performance of different protocols for three TPC-C workloads.}
+  \label{fig:tpcc}
 \end{minipage}
-\begin{minipage}{.64\textwidth}
-%\vspace{0mm}
-  \centering
-    \begin{subfigure}{0.48\linewidth}
-    \def\svgwidth{0.95\columnwidth}
-    \includegraphics[scale=0.27]{figures/scale_dc}
-%\vspace{-7mm}
-    %\vspace{-6mm}
-    \caption{\footnotesize Speedup varying num of DCs}
-    %\vspace{-10mm}
-    \label{fig:scale:dc}
-   \end{subfigure}
-%\vspace{-2mm}
-  \caption{Speedup varying number of DCs and replication factors}
+\begin{minipage}{.26\textwidth}
+\centering
+  \includegraphics[scale=0.28]{figures/rubislatencywarehouse}
+  \vspace{-2mm}
+  \caption{The performance of different protocols for RUBiS}
   \label{fig:rubis}
-  
 \end{minipage}
 \end{figure*}
 
-\begin{figure}
-\centering
-  \includegraphics[scale=0.27]{figures/rubislatencywarehouse}
-  \caption{Throughput of RUBiS workloads}
-  \label{fig:rubis}
-%\vspace{0mm}
-\end{figure}
-\fi
-
-\subsection{RUBiS}
-RUBiS \cite{rubis} models an online bidding system. It defines 26 user interactions, ranging from browsing all item categories, browsing user information to putting bids etc. Of all the interactions, there are five update transactions: store bid, store buy now, store comment, register item and register user, which has relatively low contention rate. We implement our own version of RUBiS with the following modification: (1) the original RUBiS benchmark workload interact with the backend server through web interface. We did not implement that. (2) RUBiS is not designed for partial replication. In our case, we horizontally partition database tables across data partitions, so that each data partition contains an equal portion of data of each table. (3) due to the assumption of full replication, many RUBiS insertion operations obtain their keys by incrementing a global table counter, so that keys are unique. Instead, for each partition we maintain a local counter for each of its table and modify the unique key generation to produce the key as a pair of partition id and the local counter, as studied in \cite{cecchet2008middleware}. We use RUBiS's 15\% update default workload.
-
-As figure \ref{fig:rubis} shows, \specula greatly reduces the abort rate, since some RUBiS transactions (e.g. register item) present very high local contention. On the other hand, we can not achieve very high speedup, because RUBiS has lots of read-only transactions and other update transactions, rather than register item, has relatively low conflict rate. An interesting phenomena is that, with more clients, RUBiS's abort rate and latency slightly decreases. This is because in RUBiS, the more clients, the more diversed each client's access pattern is, which eventually causing less abort.
-\iffalse
-\subsection{Scalability}
-
-\begin{table}
-\small
-\begin{center}
-  \begin{tabular}{ l | l | l | l | l } 
-    &  \scriptsize \textbf{3 near DCs} & \scriptsize \textbf{3 far DCs}& \scriptsize \textbf{6 DCs} & \scriptsize \textbf{9Dcs} \\ \hline
-  \scriptsize \textbf{TPC-C A} & \scriptsize 3.6 &  \scriptsize  6 & \scriptsize  5 &  \scriptsize 5.1 \\ \hline
-    \scriptsize \textbf{TPC-C B}  &  \scriptsize 4 & \scriptsize 4.4  & \scriptsize 5 & \scriptsize 5 \\ \hline
-    \scriptsize  \textbf{TPC-C C}  &  \scriptsize 2 & \scriptsize 4  & \scriptsize 3.8 & \scriptsize 4.5 \\ \hline
-   \scriptsize \textbf{RUBiS}  & \scriptsize 1.8 & \scriptsize 1.2 & \scriptsize 1.3 & \scriptsize 1.8 \\ \hline
-  \end{tabular}
-\end{center}
-\caption{\textit{Speedup for four workloads varying the number of DCs.}}
-\label{tab:speedup}
-\end{table}
-
-We test the scalability of our protocol with this last set of experiments. We vary the number of datacenters, while keeping the replication factor as two third of the number of datacenters, e.g. two for three DCs, four for six DCs and six for nine DCs. The number of threads to use is taken proportionally according to the number of clients in the above experiments where we get the best speedup. Three nearby datacenters are the three datacenters with farthest latency being 81ms. On the other hand, three faraway DCs, six DCs and nine DCs all have about 300ms of max latency. We can see that 
-
- so the speedups are almost the same for all workloads for these setups, as in \ref{fig:scale:rep}. However, comparing the results of three near DCs and three far DCs, note that the speedup for all workloads are higher for the three far DCs setup except for the workload TPC-C NW. Essentially, when there is low remote contention, speculation can bring larger benefit when network latency is larger. However, when there is high remote contention, larger network latency means a transaction takes longer time to commit, thus is more vulnerable to abort, which is detrimental to speculation.
- \fi
