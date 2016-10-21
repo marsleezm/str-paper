@@ -101,7 +101,7 @@
 
 \title{STR: speculative execution for geo-replicated datastores}
 
-\authorinfo{paper number XXX of XXX}
+\authorinfo{Paper 82, 14 pages}
 %\authorinfo{Zhongmiao Li$^{\dagger}$$^{\star}$, Peter Van Roy$^{\dagger}$ and Paolo Romano$^{\star}$ \\
 %	 {\normalsize $^ {\dagger}$Universit\'e catholique de Louvain \quad
 %          $^{\star}$Instituto Superior T\'ecnico} \\ [2mm]
@@ -147,7 +147,9 @@ We performed an extensive evaluation, using a micro benchmark and two realistic 
 
 \input{introduction}
 \input{relatedwork}
-
+\input{overview}
+\input{protocol}
+\input{evaluation}
 
 \section{Conclusion}
 This paper proposed {\specula}, a novel protocol that uses speculative techniques to improve performance of distributed transactions. The three novel speculative techniques, i.e. speculative commit, speculative read and precise clock, collectively mitigate the performance bottleneck of existing transactional protocol. Extensive benchmark showed that our protocol achieves significantly higher throughput than state of the art non-speculative system and is particularly beneficial when workloads have high local conflict and low remote conflict.
